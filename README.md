@@ -29,3 +29,4 @@ Posez vos questions à votre Team Lead, puis à la formation (contact@tamboai.co
 - Test Git : Daniel 
 - Test Git : Harold
 - Test Git : Wilfried Mocheye
+- Test Git : David Rene METOMO
