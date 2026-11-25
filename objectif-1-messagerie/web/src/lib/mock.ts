@@ -96,6 +96,9 @@ export class MessagingBridgeMock implements MessagingBridge {
   remove(id: number) {
     this.patch(id, (m) => ({ ...m, deleted: true, text: '', attachment: undefined }))
   }
+  removeForMe(id: number) {
+    this.patch(id, (m) => ({ ...m, deletedForMe: true }))
+  }
   react(id: number, emoji: string) {
     this.patch(id, (m) => ({ ...m, reactions: { ...m.reactions, [emoji]: (m.reactions[emoji] ?? 0) + 1 } }))
   }
@@ -115,6 +118,10 @@ export class MessagingBridgeMock implements MessagingBridge {
   }
   setArchived(id: number, value: boolean) {
     this.patchConv(id, (c) => ({ ...c, archived: value }))
+  }
+  deleteConversation(id: number) {
+    this.convs = this.convs.filter((c) => c.id !== id)
+    this.emit()
   }
   createConversation(title: string) {
     const id = Math.max(0, ...this.convs.map((c) => c.id)) + 1

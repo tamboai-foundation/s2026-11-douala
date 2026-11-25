@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { accountBridge, messagingBridge, type User } from './lib/bridge'
+import { accountBridge, createMessagingBridge, type User } from './lib/bridge'
+import type { MessagingBridge } from './lib/types'
 import { startTModeler } from './lib/tm'
 import Splash from './components/Splash'
 import Auth from './components/Auth'
@@ -8,8 +9,9 @@ import Home from './components/Home'
 type Phase = 'splash' | 'auth' | 'home'
 
 export default function App() {
-  const [phase, setPhase] = useState<Phase>('splash')
-  const [user, setUser] = useState<User | null>(null)
+  const [phase, setPhase]       = useState<Phase>('splash')
+  const [user, setUser]         = useState<User | null>(null)
+  const [bridge, setBridge]     = useState<MessagingBridge | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -17,34 +19,41 @@ export default function App() {
       await startTModeler()
       const u = await accountBridge.restoreSession()
       if (!alive) return
-      setUser(u)
-      setPhase(u ? 'home' : 'auth')
+      if (u) {
+        setUser(u)
+        setBridge(createMessagingBridge(u.id))
+        setPhase('home')
+      } else {
+        setPhase('auth')
+      }
     })()
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [])
 
-  if (phase === 'splash') return <Splash />
-  if (phase === 'auth' || !user) {
-    return (
-      <Auth
-        onDone={(u) => {
-          setUser(u)
-          setPhase('home')
-        }}
-      />
-    )
+  function handleLogin(u: User) {
+    setUser(u)
+    setBridge(createMessagingBridge(u.id))
+    setPhase('home')
   }
+
+  async function handleLogout() {
+    await accountBridge.logout()
+    setUser(null)
+    setBridge(null)
+    setPhase('auth')
+  }
+
+  if (phase === 'splash') return <Splash />
+
+  if (phase === 'auth' || !user || !bridge) {
+    return <Auth onDone={handleLogin} />
+  }
+
   return (
     <Home
       user={user}
-      bridge={messagingBridge}
-      onLogout={async () => {
-        await accountBridge.logout()
-        setUser(null)
-        setPhase('auth')
-      }}
+      bridge={bridge}
+      onLogout={handleLogout}
     />
   )
 }

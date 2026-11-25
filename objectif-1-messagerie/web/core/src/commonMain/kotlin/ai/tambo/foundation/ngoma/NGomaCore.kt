@@ -3,41 +3,80 @@
 package ai.tambo.foundation.ngoma
 
 import ai.tambo.foundation.ngoma.generated.registerAllTModels
-import ai.tambo.foundation.ngoma.models.Note
-import ai.tambo.tmodeler.ms.ext.filter
-import ai.tambo.tmodeler.ms.ext.lazy
+import ai.tambo.foundation.ngoma.models.conversations.Conversation
+import ai.tambo.foundation.ngoma.models.conversations.ConversationMember
+import ai.tambo.foundation.ngoma.models.conversations.Media
+import ai.tambo.foundation.ngoma.models.conversations.Message
+import ai.tambo.foundation.ngoma.models.conversations.Reaction
+import ai.tambo.foundation.ngoma.models.publications.Comment
+import ai.tambo.foundation.ngoma.models.publications.Like
+import ai.tambo.foundation.ngoma.models.publications.Post
+import ai.tambo.foundation.ngoma.models.publications.Reply
+import ai.tambo.foundation.ngoma.models.utilisateurs.Session
+import ai.tambo.foundation.ngoma.models.utilisateurs.User
 import ai.tambo.tmodeler.tmodelerInit
 import kotlin.js.ExperimentalJsExport
 import kotlin.js.JsExport
 import kotlin.js.JsName
 
+// =============================================================================
+// SOLID
+// S — NGomaTableInitializer : crée les tables. NGomaCore : orchestre le démarrage.
+// O — NGomaCore.init() accepte un ITableInitializer injectable.
+// I — ITableInitializer : une seule méthode.
+// D — NGomaCore dépend de l'abstraction, pas de la classe concrète.
+// =============================================================================
+
+interface ITableInitializer {
+    fun commitAll()
+}
+
 /**
- * Point d'entrée Kotlin/Wasm : seulement l'initialisation de TModeler et un exemple de modèle (Note).
- * Les ids transitent en nombres JS ; le contenu est renvoyé en JSON (String).
+ * Ordre des commit : d'abord les entités sans dépendance, puis celles qui en ont.
+ * RG-T5 : DB_VERSION incrémenté → repart d'une base vide.
  */
+object NGomaTableInitializer : ITableInitializer {
+    override fun commitAll() {
+        // Module utilisateurs
+        User.tms.commit()
+        Session.tms.commit()
+        // Module conversations (Media avant Message)
+        Media.tms.commit()
+        Conversation.tms.commit()
+        ConversationMember.tms.commit()
+        Message.tms.commit()
+        Reaction.tms.commit()
+        // Module publications
+        Post.tms.commit()
+        Like.tms.commit()
+        Comment.tms.commit()
+        Reply.tms.commit()
+    }
+}
+
 object NGomaCore {
-    // Incrémenter pour repartir d'une base vide dans tous les navigateurs.
-    const val DB_VERSION = 1
 
-    private var ready = false
+    // RG-T5 : incrémenter après toute modification de structure de modèle.
+    const val DB_VERSION = 4
 
-    fun init(dbName: String): Boolean {
-        if (ready) return true
-        registerAllTModels()
-        if (!tmodelerInit("$dbName-$DB_VERSION")) return false
-        ready = true
-        return true
+    var ready_ = false
+        private set
+
+    fun init(
+        dbName: String,
+        tableInit: ITableInitializer = NGomaTableInitializer,
+    ): Boolean {
+        if (ready_) return true
+        return try {
+            registerAllTModels()
+            if (!tmodelerInit("$dbName-$DB_VERSION")) return false
+            tableInit.commitAll()
+            ready_ = true
+            true
+        } catch (_: Throwable) {
+            false
+        }
     }
-
-    fun createNote(title: String, content: String): Double {
-        val note = Note()
-        note.title_ = title
-        note.content_ = content
-        note.isave()
-        return 1.0
-    }
-
-    fun noteCount(): Double = Note.tms.with(Note()).lazy().filter().coreBuild().size.toDouble()
 }
 
 @JsExport
@@ -47,11 +86,3 @@ fun ngomaInit(dbName: String): Boolean = try {
 } catch (_: Throwable) {
     false
 }
-
-@JsExport
-@JsName("ngomaCreateNote")
-fun ngomaCreateNote(title: String, content: String): Double = NGomaCore.createNote(title, content)
-
-@JsExport
-@JsName("ngomaNoteCount")
-fun ngomaNoteCount(): Double = NGomaCore.noteCount()

@@ -9,6 +9,7 @@ export type Message = {
   replyToId?: number
   edited?: boolean
   deleted?: boolean
+  deletedForMe?: boolean
   attachment?: string
   reactions: Record<string, number>
 }
@@ -39,10 +40,12 @@ export interface MessagingBridge {
   send(conversationId: number, text: string, opts?: { replyToId?: number; attachment?: string }): void
   edit(messageId: number, text: string): void
   remove(messageId: number): void
+  removeForMe(messageId: number): void
   react(messageId: number, emoji: string): void
   markRead(conversationId: number): void
   setPinned(conversationId: number, value: boolean): void
   setMuted(conversationId: number, value: boolean): void
   setArchived(conversationId: number, value: boolean): void
+  deleteConversation(conversationId: number): void
   createConversation(title: string): number
 }
