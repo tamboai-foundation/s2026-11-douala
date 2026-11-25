@@ -1,0 +1,87 @@
+ngoma-web/
+├── core/                                      ← Module Kotlin/Wasm (Gradle)
+│   ├── build.gradle.kts                       ← kotlin multiplatform + ksp
+│   ├── settings.gradle.kts
+│   ├── gradlew / gradlew.bat
+│   └── src/commonMain/kotlin/
+│       ├── ai/tambo/foundation/ngoma/
+│       │   ├── NGomaCore.kt                   ← init TModeler, tms.commit() de tous les modèles (SOLID)
+│       │   └── models/
+│       │       └── Note.kt                    ← modèle d'exemple (conservé)
+│       └── moduls/                            ← 3 modules métier
+│           ├── utilisateurs/
+│           │   ├── Models.kt                  ← User, Session
+│           │   ├── Bridge.kt                  ← @JsExport : register, login, logout,
+│           │   │                                  restoreSession, getUser, updateProfile,
+│           │   │                                  setActive, searchUsers, findUserByPhone
+│           │   └── UsersFeature.kt            ← vide (backend futur)
+│           ├── conversations/
+│           │   ├── Models.kt                  ← Media, Conversation, ConversationMember,
+│           │   │                                  Message, Reaction
+│           │   ├── Bridge.kt                  ← @JsExport : conversations, createConversation,
+│           │   │                                  setPinned, setMuted, setArchived, markRead,
+│           │   │                                  deleteConversation, messages, send,
+│           │   │                                  editMessage, deleteMessage,
+│           │   │                                  deleteMessageForMe, react
+│           │   └── ConversationsFeature.kt    ← vide (backend futur)
+│           └── publications/
+│               ├── Models.kt                  ← Post, Like, Comment, Reply
+│               ├── Bridge.kt                  ← @JsExport : posts, userPosts, createPost,
+│               │                                  editPost, deletePost, likePost,
+│               │                                  comments, addComment, addReply
+│               └── PublicationsFeature.kt     ← vide (backend futur)
+│
+├── build.gradle.kts                           ← racine Gradle (plugins apply false)
+├── settings.gradle.kts                        ← include(":core")
+├── package.json                               ← dépendances React + scripts npm
+├── vite.config.ts
+├── tailwind.config.js
+├── postcss.config.js
+├── tsconfig.json
+├── index.html
+│
+├── scripts/
+│   └── sync-core.mjs                          ← copie le build Kotlin dans src/core/
+│
+├── src/
+│   ├── main.tsx                               ← point d'entrée React
+│   ├── App.tsx                                ← router (splash → auth → home)
+│   ├── index.css
+│   ├── vite-env.d.ts
+│   │
+│   ├── components/
+│   │   ├── Auth.tsx                           ← formulaire login/register + gestion erreurs
+│   │   ├── Home.tsx                           ← liste conversations, filtres, wrappedBridge
+│   │   ├── ConversationView.tsx               ← messages, menu contextuel, icônes Lucide
+│   │   ├── NewConversationDialog.tsx          ← dialog recherche contact + création conversation
+│   │   ├── Icons.tsx                          ← icônes SVG inline (style Lucide, sans dépendance)
+│   │   └── Splash.tsx                         ← écran de chargement
+│   │
+│   ├── lib/
+│   │   ├── types.ts                           ← types TS partagés (User, Conversation, Message,
+│   │   │                                          AccountBridge, MessagingBridge)
+│   │   ├── bridge.ts                          ← implémentations TModeler des bridges
+│   │   │                                          (AccountBridgeCore, MessagingBridgeCore)
+│   │   │                                          + fallback mocks + polling 2s
+│   │   ├── mock.ts                            ← implémentations mock (données en mémoire)
+│   │   ├── tm.ts                              ← chargeur Wasm + type NGomaCore (toutes les fonctions)
+│   │   └── config.ts                          ← DB_NAME
+│   │
+│   └── core/                                  ← build Kotlin copié par npm run sync:core
+│       ├── ngoma-core-web-wasm-js.mjs         ← pont JS → Wasm
+│       ├── ngoma-core-web-wasm-js.uninstantiated.mjs
+│       ├── ngoma-core-web-wasm-js.wasm        ← bytecode Kotlin (~3 Mo)
+│       ├── ngoma-core-web-wasm-js.map
+│       └── package.json
+
+
+
+--- [A FAIRE] ETAPE 5 : Build et verification depuis le dossier ./core---
+  [ ] .\gradlew.bat :wasmJsBrowserProductionLibraryDistribution --console=plain
+  [ ] .\gradlew.bat --stop
+
+  dans ,/web
+  [ ] npm run sync:core  
+  [ ] npm install
+  [ ] npm run build
+  [ ] npm run preview (ouvrir deux fois dans le meme profil navigateur)
