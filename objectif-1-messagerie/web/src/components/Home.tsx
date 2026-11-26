@@ -6,7 +6,8 @@ import NewConversationDialog from './NewConversationDialog'
 const FILTERS = ['Toutes', 'Non lues', 'Épinglées', 'Archivées'] as const
 type Filter = (typeof FILTERS)[number]
 
-export function useBridge<T>(bridge: MessagingBridge, read: () => T): T {
+export function useBridge<T>(bridge: { subscribe(listener: () => void): () => void }, read: () => T): T {
+  // Les mocks émettent à chaque changement : on force un nouveau rendu et on relit l'état du pont.
   const [version, setVersion] = useState(0)
   useEffect(() => bridge.subscribe(() => setVersion((v) => v + 1)), [bridge])
   void version
@@ -31,10 +32,14 @@ export default function Home({
   user,
   bridge,
   onLogout,
+  openChatWith,
+  onChatOpened,
 }: {
   user: User
   bridge: MessagingBridge
   onLogout: () => void
+  openChatWith?: string | null
+  onChatOpened?: () => void
 }) {
   const convs = useBridge(bridge, () => bridge.conversations())
   const [selected, setSelected] = useState<number | null>(null)
@@ -77,6 +82,14 @@ export default function Home({
       if (!value) setFilter('Toutes')
     },
   }
+
+  // « Écrire un message » depuis l'écran Personnes : ouvre la conversation de cette personne (la crée si besoin).
+  useEffect(() => {
+    if (!openChatWith) return
+    const existing = bridge.conversations().find((c) => c.title === openChatWith)
+    setSelected(existing ? existing.id : bridge.createConversation(openChatWith))
+    onChatOpened?.()
+  }, [openChatWith, bridge, onChatOpened])
 
   function newConversation() {
     setDialogError('')

@@ -1,5 +1,5 @@
-import { AccountBridgeMock, MessagingBridgeMock } from './mock'
-import type { AccountBridge, MessagingBridge, User, Conversation, Message } from './types'
+import { AccountBridgeMock, MessagingBridgeMock, VideoBridgeMock } from './mock'
+import type { AccountBridge, MessagingBridge, VideoBridge, User, Conversation, Message } from './types'
 import { getCore, type NGomaCore } from './tm'
 
 // =============================================================================
@@ -80,6 +80,15 @@ class AccountBridgeCore implements AccountBridge {
     const c = getCore()
     if (c) c.ngomaLogout()
   }
+
+  // Gestion des utilisateurs (M1 SI, module 1) : ?crans livr?s par Foundation avec le mock du mod?le.
+  // ? brancher sur votre core : ngomaSearchUsers, ngomaGetUser, ngomaUpdateProfile, ngomaSetActive.
+  private readonly usersMock = new AccountBridgeMock()
+  subscribe(listener: () => void): () => void { return this.usersMock.subscribe(listener) }
+  users(query?: string): User[] { return this.usersMock.users(query) }
+  user(id: number): User | undefined { return this.usersMock.user(id) }
+  updateProfile(patch: { name?: string; bio?: string }): void { this.usersMock.updateProfile(patch) }
+  deleteAccount(): Promise<void> { return this.usersMock.deleteAccount() }
 }
 
 // =============================================================================
@@ -303,6 +312,9 @@ export function makeMessagingBridge(userId: number): MessagingBridge {
 
 export const accountBridge: AccountBridge = new AccountBridgeCore()
 export const messagingBridge: MessagingBridge = new MessagingBridgeMock()
+// Publications (M1 SI, module 3) : ?crans livr?s par Foundation avec le mock du mod?le.
+// ? brancher sur votre core : ngomaPosts, ngomaUserPosts, ngomaCreatePost, ngomaLikePost, ngomaComments...
+export const videoBridge: VideoBridge = new VideoBridgeMock()
 
 export * from './types'
 export { ME } from './mock'
