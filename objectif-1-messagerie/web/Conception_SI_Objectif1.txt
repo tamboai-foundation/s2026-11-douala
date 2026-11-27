@@ -36,6 +36,8 @@ Hors périmètre pour l'instant
   - Chatbot.
   - Épinglage des messages (on épingle uniquement des conversations).
   - Publications audio (l'écran n'accepte que les photos et les vidéos).
+  - Photos et vidéos de plus de 500 Ko : sans serveur, le navigateur ne peut pas les
+    conserver (voir RG-F6).
   - Temps réel et synchronisation avec un serveur.
 
 
@@ -162,7 +164,7 @@ Module Publications et interactions
   ------------+---------------------+------------
   author      | → User              | Auteur
   caption     | Text (défaut "")    | Légende, facultative si un média est présent
-  media       | → Media (0..1)      | Photo ou vidéo, facultative
+  media       | → Media (0..1)      | Photo ou vidéo de 500 Ko maximum, facultative (RG-F3)
   edited      | Bool (défaut false) | La légende a été modifiée
   publishedAt | Time                | Date de publication
 
@@ -205,14 +207,16 @@ Entité partagée
 ---------------
 
 > Media (fichier)
-Un seul modèle pour les fichiers publiés. Il contient la référence du fichier, jamais son
-contenu.
+Un seul modèle pour les fichiers publiés. Sans serveur, il contient le contenu du fichier
+encodé en texte (dataUrl), limité à 500 Ko ; le champ file est gardé pour le jour où un
+serveur stockera les fichiers et où le modèle ne contiendra plus que leur référence.
 
-  Attribut  | Type           | Description
-  ----------+----------------+------------
-  file      | File           | Référence du fichier stocké dans le navigateur
-  type      | Text           | image ou video
-  sizeBytes | Int (défaut 0) | Taille du fichier en octets, pour contrôler les limites
+  Attribut  | Type             | Description
+  ----------+------------------+------------
+  file      | File             | Référence du fichier, pour un futur serveur (non utilisée sans serveur)
+  dataUrl   | Text (défaut "") | Contenu du fichier encodé en base64 (data URL), sans serveur
+  type      | Text             | image ou video
+  sizeBytes | Int (défaut 0)   | Taille du fichier en octets, pour contrôler les limites
 
 
 
@@ -436,15 +440,26 @@ RG-K8   On ne peut ni répondre à un commentaire supprimé, ni l'aimer, ni le m
 
 Médias
 ------
-RG-F1   Les fichiers publiés passent par un seul modèle Media, qui contient la référence
-        du fichier, jamais son contenu. [TModeler]
+RG-F1   Les fichiers publiés passent par un seul modèle Media. Sans serveur, il contient
+        le contenu du fichier (dataUrl) ; avec un serveur, il n'en contiendra plus que la
+        référence (file). [TModeler]
 RG-F2   Le type d'un média vaut obligatoirement image ou video. [Code]
-RG-F3   Une vidéo fait 100 Mo maximum (contrôle sur sizeBytes avant l'enregistrement).
-        [Code]
+RG-F3   Une photo ou une vidéo fait 500 Ko maximum, contrôlé avant la lecture du fichier
+        et à nouveau par le core (sizeBytes). Au-delà, la publication est refusée et un message
+        est affiché dans la console. [Code]
 RG-F4   Les fichiers sont stockés dans le navigateur, dont l'espace est limité : en cas de
         quota dépassé, l'enregistrement est refusé avec un message clair. [Code]
 RG-F5   Dans les listes, on ne charge pas le fichier lui-même : on le charge seulement au
         moment de l'afficher. [Code]
+RG-F6   Pourquoi 500 Ko : sur le web, TModeler range toute la base dans le stockage du
+        navigateur, environ 5 millions de caractères pour tout le site (messages et comptes
+        compris), et chaque enregistrement réécrit la table entière. Un fichier encodé en texte
+        occupe environ 1,4 fois sa taille : un média de 500 Ko occupe environ 685 000 caractères,
+        ce qui laisse de la place pour environ 6 médias de cette taille, à partager avec les
+        messages et les comptes. Un fichier de 1 Mo en occuperait 1,4 million : 3 ou 4 suffiraient
+        à bloquer l'application. Si le stockage est plein, l'enregistrement est refusé (RG-F4) :
+        il faut alors supprimer des publications. Les médias plus lourds attendront un serveur.
+        [Code]
 
 
 Règles techniques TModeler
@@ -466,20 +481,21 @@ RG-T6   La base locale est nommée nom-DB_VERSION. Après toute modification de 
 7. CHANGEMENTS PAR RAPPORT À LA VERSION 1
 =========================================
 
-  Élément                        | Version 1                                      | Version 2 (interfaces Foundation)
-  -------------------------------+------------------------------------------------+----------------------------------
-  Identifiant de connexion       | phone (téléphone)                              | identifier : téléphone ou e-mail
-  Description du profil          | Hors périmètre                                 | bio, modifiable dans l'écran Profil
-  Date d'inscription             | createdAt                                      | joinedAt, affichée sur le profil
-  Gestion du compte              | Désactivation / réactivation (active)          | Suppression définitive (deleted + effacement des données)
-  Recherche de personnes         | Par nom ou téléphone, sans soi-même            | Par nom ou description, soi-même inclus « (vous) »
-  Pièce jointe d'un message      | → Media                                        | Nom du fichier (Text), comme l'écran le transmet
-  Type de publication            | Champ type : image, audio, video, legende      | Déduit du média : photo, vidéo ou légende seule ; plus d'audio
-  Likes sur les publications     | Jusqu'à 4 (un par emoji) + compteur likesCount | Un seul « J'aime » par utilisateur ; nombre calculé
-  Réponses aux commentaires      | Entité Reply séparée                           | Comment avec un parent (une seule entité)
-  Commentaires                   | Ni modification ni suppression                 | Modification, suppression douce et likes de commentaires (CommentLike)
-  Fil des publications           | Hors périmètre                                 | Fil de toutes les publications, la plus récente en premier
-  Suppression d'une conversation | Non prévue                                     | Suppression de son côté seulement (hidden), réapparition si l'autre écrit (RG-C10)
+  Élément                           | Version 1                                      | Version 2 (interfaces Foundation)
+  ----------------------------------+------------------------------------------------+----------------------------------
+  Identifiant de connexion          | phone (téléphone)                              | identifier : téléphone ou e-mail
+  Description du profil             | Hors périmètre                                 | bio, modifiable dans l'écran Profil
+  Date d'inscription                | createdAt                                      | joinedAt, affichée sur le profil
+  Gestion du compte                 | Désactivation / réactivation (active)          | Suppression définitive (deleted + effacement des données)
+  Recherche de personnes            | Par nom ou téléphone, sans soi-même            | Par nom ou description, soi-même inclus « (vous) »
+  Pièce jointe d'un message         | → Media                                        | Nom du fichier (Text), comme l'écran le transmet
+  Type de publication               | Champ type : image, audio, video, legende      | Déduit du média : photo, vidéo ou légende seule ; plus d'audio
+  Likes sur les publications        | Jusqu'à 4 (un par emoji) + compteur likesCount | Un seul « J'aime » par utilisateur ; nombre calculé
+  Réponses aux commentaires         | Entité Reply séparée                           | Comment avec un parent (une seule entité)
+  Commentaires                      | Ni modification ni suppression                 | Modification, suppression douce et likes de commentaires (CommentLike)
+  Fil des publications              | Hors périmètre                                 | Fil de toutes les publications, la plus récente en premier
+  Photos et vidéos des publications | Référence du fichier, vidéo de 100 Mo maximum  | Contenu enregistré dans Media.dataUrl, 500 Ko maximum (RG-F3, RG-F6)
+  Suppression d'une conversation    | Non prévue                                     | Suppression de son côté seulement (hidden), réapparition si l'autre écrit (RG-C10)
 
 
 
@@ -488,8 +504,11 @@ RG-T6   La base locale est nommée nom-DB_VERSION. Après toute modification de 
 
   - Utilisateur courant : les écrans Personnes, Profil et Vidéos comparent les
     identifiants à une constante ME = 1 fournie par le mock. Avec la base TModeler,
-    l'utilisateur connecté a son propre _id (2, 3…). Il faut demander à Foundation comment
-    l'écran doit connaître l'utilisateur connecté, sans modifier les écrans.
+    l'utilisateur connecté a son propre _id (2, 3…). En attendant la réponse de
+    Foundation, bridge.ts échange l'identifiant de l'utilisateur connecté avec ME (dans
+    les deux sens) pour les bridges utilisateurs et publications : les écrans
+    reconnaissent ainsi ses publications et ses likes, sans être modifiés. C'est un
+    contournement à valider avec Foundation.
   - Ouverture d'une conversation : le bouton « Écrire un message » appelle
     createConversation avec le nom de la personne. Deux utilisateurs peuvent avoir le même
     nom : à faire préciser par Foundation (identifiant de l'utilisateur plutôt que son
@@ -684,11 +703,13 @@ parmi ceux-ci :
 
 > Entité partagée
     class Media : TModel<Media>() {
-        var file      = FileField()
+        var file      = FileField()               // référence, pour un futur serveur
+        var dataUrl   = TextField().default("")   // contenu en base64, sans serveur
         var type      = TextField().default("")   // image ou video
         var sizeBytes = IntField().default(0)
     
         @TMignore var file_      by file
+        @TMignore var dataUrl_   by dataUrl
         @TMignore var type_      by type
         @TMignore var sizeBytes_ by sizeBytes
     

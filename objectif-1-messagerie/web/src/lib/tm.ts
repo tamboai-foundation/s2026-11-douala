@@ -34,7 +34,8 @@ export type NGomaCore = {
   // ── Module publications ──────────────────────────────────────────────────
   ngomaPosts(): string
   ngomaUserPosts(authorId: string): string
-  ngomaCreatePost(authorId: string, caption: string): string
+  ngomaCreatePost(authorId: string, caption: string, mediaType: string, mediaData: string, sizeBytes: string): string
+  ngomaMediaData(mediaId: string): string
   ngomaEditPost(postId: string, authorId: string, newCaption: string): string
   ngomaDeletePost(postId: string, authorId: string): string
   ngomaToggleLike(postId: string, userId: string): string
