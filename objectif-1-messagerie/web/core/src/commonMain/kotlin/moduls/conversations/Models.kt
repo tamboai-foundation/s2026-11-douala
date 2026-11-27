@@ -41,6 +41,9 @@ class ConversationMember : TModel<ConversationMember>() {
     var archived     = BoolField().default(false)
     var unread       = IntField().default(0)       // RG-M9
     var lastReadAt   = TimeField()
+    // hidden = true : ce participant a supprimé la conversation de son côté.
+    // L'autre participant n'est pas touché ; si l'autre écrit, hidden repasse à false.
+    var hidden       = BoolField().default(false)
 
     @TMignore var conversation_ by conversation
     @TMignore var user_         by user
@@ -49,6 +52,7 @@ class ConversationMember : TModel<ConversationMember>() {
     @TMignore var archived_     by archived
     @TMignore var unread_       by unread
     @TMignore var lastReadAt_   by lastReadAt
+    @TMignore var hidden_       by hidden
 
     companion object { val tms by lazy { Tms(ConversationMember::class) } }
 }

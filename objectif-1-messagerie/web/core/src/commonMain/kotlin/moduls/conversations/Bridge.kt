@@ -40,6 +40,7 @@ fun ngomaConversations(userId: String, showArchived: Boolean): String {
         val uid     = userId.toLongOrNull() ?: return error("INVALID_ID")
         val members = all(ConversationMember.tms)
             .filter { n { it.user_?._id_ } == uid }
+            .filter { !it.hidden_ }   // conversations supprimées par cet utilisateur masquées
             .filter { if (showArchived) true else !it.archived_ }
             .sortedWith(compareByDescending<ConversationMember> { it.pinned_ }
                 .thenByDescending { n { it.conversation_?.lastMessageAt_?.toString() } ?: "" })
@@ -86,8 +87,17 @@ fun ngomaCreateConversation(creatorId: String, otherIdentifier: String): String 
         if (creator._id_ == other._id_) return error("CANNOT_SELF_CONVERSE")
 
         // RG-C2 : si une conversation existe déjà entre les deux, on la rouvre
+        // (et elle réapparaît si le créateur l'avait supprimée de son côté)
         val existing = findConversationBetween(cid, other._id_)
-        if (existing != null) return obj("id" to existing._id_.toString(), "existing" to true)
+        if (existing != null) {
+            val myMember = all(ConversationMember.tms)
+                .firstOrNull { n { it.conversation_?._id_ } == existing._id_ && n { it.user_?._id_ } == cid }
+            if (myMember != null && myMember.hidden_) {
+                myMember.hidden_ = false
+                myMember.isave()
+            }
+            return obj("id" to existing._id_.toString(), "existing" to true)
+        }
 
         val now  = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         val conv = Conversation().apply {
@@ -234,8 +244,10 @@ fun ngomaSend(
         // RG-M9 : lastMessageAt + unread de l'autre participant
         conv.lastMessageAt_ = now
         conv.isave()
+        // Si l'autre avait supprimé la conversation de son côté, elle réapparaît
         members.filter { n { it.user_?._id_ } != aid }.forEach { m ->
             m.unread_ = m.unread_ + 1
+            m.hidden_ = false
             m.isave()
         }
 
@@ -287,6 +299,18 @@ fun ngomaDeleteMessage(messageId: String, authorId: String): String {
         msg.isave()
         obj("ok" to true)
     } catch (_: Throwable) { error("DELETE_FAILED") }
+}
+
+/**
+ * Supprime la conversation du côté de cet utilisateur seulement : hidden = true sur son
+ * ConversationMember. L'autre participant la garde ; si l'autre écrit, elle réapparaît (voir ngomaSend).
+ * Les messages ne sont pas effacés : RG-C2 (une seule conversation par paire) reste respectée.
+ */
+@JsExport
+@JsName("ngomaDeleteConversation")
+fun ngomaDeleteConversation(conversationId: String, userId: String): String {
+    checkReady()?.let { return it }
+    return patchMember(conversationId, userId) { it.hidden_ = true }
 }
 
 // =============================================================================

@@ -28,6 +28,7 @@ export type NGomaCore = {
   ngomaSend(conversationId: string, authorId: string, text: string, replyToId: string, attachment: string): string
   ngomaEditMessage(messageId: string, authorId: string, newText: string): string
   ngomaDeleteMessage(messageId: string, authorId: string): string
+  ngomaDeleteConversation(conversationId: string, userId: string): string
   ngomaReact(messageId: string, userId: string, emoji: string): string
 
   // ── Module publications ──────────────────────────────────────────────────

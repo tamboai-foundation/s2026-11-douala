@@ -260,9 +260,13 @@ class MessagingBridgeCore implements MessagingBridge {
    * title = numéro de téléphone de l'interlocuteur (RG-C3).
    * RG-C2 : si la conversation existe déjà, retourne son id.
    */
-  /** « Supprimer la conversation » : hors conception v2 (ajout non prévu par les interfaces Foundation). */
-  deleteConversation(_conversationId: number): void {
-    console.warn('[NGoma] « Supprimer la conversation » n\'est pas prévu par la conception v2.')
+  /** Supprime la conversation du côté de l'utilisateur connecté seulement. */
+  deleteConversation(conversationId: number): void {
+    const c = getCore()
+    if (!c) return
+    c.ngomaDeleteConversation(String(conversationId), this.currentUserId)
+    this.reload()
+    this.emit()
   }
 
   createConversation(title: string): number {
