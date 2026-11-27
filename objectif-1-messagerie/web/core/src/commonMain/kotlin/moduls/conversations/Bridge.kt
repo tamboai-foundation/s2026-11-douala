@@ -40,7 +40,6 @@ fun ngomaConversations(userId: String, showArchived: Boolean): String {
         val uid     = userId.toLongOrNull() ?: return error("INVALID_ID")
         val members = all(ConversationMember.tms)
             .filter { n { it.user_?._id_ } == uid }
-            .filter { !it.hidden_ }   // masquer les conversations supprimées par cet utilisateur
             .filter { if (showArchived) true else !it.archived_ }
             .sortedWith(compareByDescending<ConversationMember> { it.pinned_ }
                 .thenByDescending { n { it.conversation_?.lastMessageAt_?.toString() } ?: "" })
@@ -73,31 +72,22 @@ fun ngomaConversations(userId: String, showArchived: Boolean): String {
  */
 @JsExport
 @JsName("ngomaCreateConversation")
-fun ngomaCreateConversation(creatorId: String, otherPhone: String): String {
+fun ngomaCreateConversation(creatorId: String, otherIdentifier: String): String {
     checkReady()?.let { return it }
     return try {
         val cid  = creatorId.toLongOrNull() ?: return error("INVALID_ID")
         val creator = all(User.tms).firstOrNull { it._id_ == cid } ?: return error("USER_NOT_FOUND")
 
-        // RG-C3 : l'interlocuteur doit avoir un compte actif
-        val other = all(User.tms).firstOrNull { it.phone_ == otherPhone.trim() && it.active_ }
+        // RG-C3 : l'interlocuteur doit avoir un compte non supprimé
+        val other = all(User.tms).firstOrNull { it.identifier_ == otherIdentifier.trim() && !it.deleted_ }
             ?: return error("USER_NOT_FOUND")
 
         // RG-C1 : pas de conversation avec soi-même
         if (creator._id_ == other._id_) return error("CANNOT_SELF_CONVERSE")
 
-        // RG-C2 : vérifier si une conversation existe déjà entre les deux
+        // RG-C2 : si une conversation existe déjà entre les deux, on la rouvre
         val existing = findConversationBetween(cid, other._id_)
-        if (existing != null) {
-            // Si le créateur avait "supprimé" cette conversation → la faire réapparaître
-            val myMember = all(ConversationMember.tms)
-                .firstOrNull { n { it.conversation_?._id_ } == existing._id_ && n { it.user_?._id_ } == cid }
-            if (myMember != null && myMember.hidden_) {
-                myMember.hidden_ = false
-                myMember.isave()
-            }
-            return obj("id" to existing._id_.toString(), "existing" to true)
-        }
+        if (existing != null) return obj("id" to existing._id_.toString(), "existing" to true)
 
         val now  = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
         val conv = Conversation().apply {
@@ -181,10 +171,9 @@ fun ngomaMessages(conversationId: String): String {
                     "text"          to msg.text_,
                     "sentAt"        to (n { msg.sentAt_?.toString() } ?: ""),
                     "replyToId"     to (n { msg.replyTo_?._id_?.toString() } ?: "0"),
-                    "attachmentId"  to (n { msg.attachment_?._id_?.toString() } ?: ""),
+                    "attachment"    to msg.attachment_,
                     "edited"        to msg.edited_,
                     "deleted"       to msg.deleted_,
-                    "deletedForIds" to msg.deletedForIds_,
                     "reactions"     to reacts
                 )
             }
@@ -196,6 +185,7 @@ fun ngomaMessages(conversationId: String): String {
  * Envoie un message.
  * RG-M2 : texte ou pièce jointe obligatoire.
  * RG-M3 : auteur doit être participant.
+ * RG-M4 : au plus une pièce jointe, dont on enregistre le nom de fichier.
  * RG-M9 : met à jour lastMessageAt et incrémente unread de l'autre participant.
  */
 @JsExport
@@ -205,9 +195,10 @@ fun ngomaSend(
     authorId: String,
     text: String,
     replyToId: String,
+    attachment: String,
 ): String {
     checkReady()?.let { return it }
-    if (text.isBlank()) return error("EMPTY_MESSAGE")
+    if (text.isBlank() && attachment.isBlank()) return error("EMPTY_MESSAGE")
     return try {
         val cid  = conversationId.toLongOrNull() ?: return error("INVALID_ID")
         val aid  = authorId.toLongOrNull()        ?: return error("INVALID_ID")
@@ -230,6 +221,7 @@ fun ngomaSend(
             conversation_ = conv
             author_       = author
             text_         = text
+            attachment_   = attachment.trim()
             sentAt_       = now
         }
         if (replyMsg != null) {
@@ -240,12 +232,10 @@ fun ngomaSend(
         msg.isave()
 
         // RG-M9 : lastMessageAt + unread de l'autre participant
-        // Si l'autre avait "supprimé" la conversation (hidden=true) → la faire réapparaître
         conv.lastMessageAt_ = now
         conv.isave()
         members.filter { n { it.user_?._id_ } != aid }.forEach { m ->
-            m.unread_  = m.unread_ + 1
-            m.hidden_  = false   // réapparition workflow WhatsApp
+            m.unread_ = m.unread_ + 1
             m.isave()
         }
 
@@ -260,18 +250,22 @@ fun ngomaSend(
 @JsName("ngomaEditMessage")
 fun ngomaEditMessage(messageId: String, authorId: String, newText: String): String {
     checkReady()?.let { return it }
-    if (newText.isBlank()) return error("EMPTY_MESSAGE")
     return try {
         val mid = messageId.toLongOrNull() ?: return error("INVALID_ID")
         val aid = authorId.toLongOrNull()  ?: return error("INVALID_ID")
         val msg = all(Message.tms).firstOrNull { it._id_ == mid } ?: return error("NOT_FOUND")
         if (n { msg.author_?._id_ } != aid) return error("FORBIDDEN")  // RG-M5
         if (msg.deleted_)                   return error("ALREADY_DELETED") // RG-M7
+        // RG-M2 : le message reste non vide (texte ou pièce jointe) ; RG-M5 : la pièce jointe n'est pas modifiable
+        if (newText.isBlank() && msg.attachment_.isBlank()) return error("EMPTY_MESSAGE")
         msg.text_   = newText
         msg.edited_ = true
         msg.isave()
         obj("ok" to true)
-    } catch (_: Throwable) { error("UPDATE_FAILED") }
+    } catch (e: Throwable) {
+        println("[NGoma] ngomaEditMessage : $e")
+        obj("error" to "UPDATE_FAILED", "detail" to e.toString())
+    }
 }
 
 /**
@@ -287,52 +281,10 @@ fun ngomaDeleteMessage(messageId: String, authorId: String): String {
         val aid = authorId.toLongOrNull()  ?: return error("INVALID_ID")
         val msg = all(Message.tms).firstOrNull { it._id_ == mid } ?: return error("NOT_FOUND")
         if (n { msg.author_?._id_ } != aid) return error("FORBIDDEN")
-        msg.text_    = ""
-        msg.deleted_ = true
+        msg.text_       = ""
+        msg.attachment_ = ""
+        msg.deleted_    = true
         msg.isave()
-        obj("ok" to true)
-    } catch (_: Throwable) { error("DELETE_FAILED") }
-}
-
-/**
- * Suppression d'un message uniquement pour l'utilisateur qui demande.
- * L'autre participant continue de voir le message normalement.
- */
-@JsExport
-@JsName("ngomaDeleteMessageForMe")
-fun ngomaDeleteMessageForMe(messageId: String, userId: String): String {
-    checkReady()?.let { return it }
-    return try {
-        val mid = messageId.toLongOrNull() ?: return error("INVALID_ID")
-        val uid = userId.toLongOrNull()    ?: return error("INVALID_ID")
-        val msg = all(Message.tms).firstOrNull { it._id_ == mid } ?: return error("NOT_FOUND")
-        val existing = msg.deletedForIds_.split(",").filter { it.isNotBlank() }.toMutableList()
-        if (!existing.contains(uid.toString())) {
-            existing.add(uid.toString())
-            msg.deletedForIds_ = existing.joinToString(",")
-            msg.isave()
-        }
-        obj("ok" to true)
-    } catch (_: Throwable) { error("DELETE_FAILED") }
-}
-
-/**
- * Supprime la conversation côté utilisateur uniquement (workflow WhatsApp).
- * Met hidden = true sur son ConversationMember — l'autre ne voit rien.
- * Si l'autre envoie un message, hidden repasse à false automatiquement (voir ngomaSend).
- */
-@JsExport
-@JsName("ngomaDeleteConversation")
-fun ngomaDeleteConversation(conversationId: String, userId: String): String {
-    checkReady()?.let { return it }
-    return try {
-        val cid = conversationId.toLongOrNull() ?: return error("INVALID_ID")
-        val uid = userId.toLongOrNull()         ?: return error("INVALID_ID")
-        val member = all(ConversationMember.tms)
-            .firstOrNull { n { it.conversation_?._id_ } == cid && n { it.user_?._id_ } == uid }
-            ?: return error("NOT_FOUND")
-        member.hidden_ = true
-        member.isave()
         obj("ok" to true)
     } catch (_: Throwable) { error("DELETE_FAILED") }
 }
@@ -397,8 +349,7 @@ fun ngomaReact(messageId: String, userId: String, emoji: String): String {
 // =============================================================================
 
 private fun findConversationBetween(uid1: Long, uid2: Long): Conversation? {
-    // On cherche parmi TOUS les membres (y compris hidden) pour respecter RG-C2 :
-    // une seule conversation possible entre deux personnes, même si l'un a "supprimé".
+    // RG-C2 : une seule conversation possible entre deux personnes.
     val members  = all(ConversationMember.tms)
     val convIds1 = members.filter { n { it.user_?._id_ } == uid1 }
         .mapNotNull { n { it.conversation_?._id_ } }.toSet()

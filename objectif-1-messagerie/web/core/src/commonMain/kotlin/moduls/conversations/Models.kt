@@ -6,37 +6,19 @@ import ai.tambo.tmodeler.field.common.IntField
 import ai.tambo.tmodeler.field.advanced.BoolField
 import ai.tambo.tmodeler.field.advanced.TimeField
 import ai.tambo.tmodeler.field.advanced.ModelField
-import ai.tambo.tmodeler.field.media.FileField
 import ai.tambo.tmodeler.model.TModel
 import ai.tambo.tmodeler.model.TMignore
 import ai.tambo.tmodeler.ms.Tms
 
 // ---------------------------------------------------------------------------
-// Media — entité partagée (messagerie + publications)
-// ---------------------------------------------------------------------------
-
-class Media : TModel<Media>() {
-
-    var file      = FileField()
-    var type      = TextField().default("")   // image, audio, video
-    var sizeBytes = IntField().default(0)
-
-    @TMignore var file_      by file
-    @TMignore var type_      by type
-    @TMignore var sizeBytes_ by sizeBytes
-
-    companion object { val tms by lazy { Tms(Media::class) } }
-}
-
-// ---------------------------------------------------------------------------
-// Conversation
+// Conversation : titre non stocké, c'est le nom de l'autre participant (RG-C4)
 // ---------------------------------------------------------------------------
 
 class Conversation : TModel<Conversation>() {
 
     var creator       = ModelField(User::class)
     var createdAt     = TimeField()
-    var lastMessageAt = TimeField()
+    var lastMessageAt = TimeField()   // tri de la liste (RG-C7)
 
     @TMignore var creator_       by creator
     @TMignore var createdAt_     by createdAt
@@ -46,7 +28,8 @@ class Conversation : TModel<Conversation>() {
 }
 
 // ---------------------------------------------------------------------------
-// ConversationMember — réglages personnels de chaque participant
+// ConversationMember : exactement 2 par conversation (RG-C1),
+// réglages personnels de chaque participant (RG-C5)
 // ---------------------------------------------------------------------------
 
 class ConversationMember : TModel<ConversationMember>() {
@@ -56,12 +39,8 @@ class ConversationMember : TModel<ConversationMember>() {
     var pinned       = BoolField().default(false)
     var muted        = BoolField().default(false)
     var archived     = BoolField().default(false)
-    var unread       = IntField().default(0)
+    var unread       = IntField().default(0)       // RG-M9
     var lastReadAt   = TimeField()
-    // hidden = true : l'utilisateur a "supprimé" la conversation de son côté.
-    // Le membre reste en base pour que l'autre participant puisse continuer à écrire.
-    // Si l'autre envoie un message → hidden repasse à false automatiquement.
-    var hidden       = BoolField().default(false)
 
     @TMignore var conversation_ by conversation
     @TMignore var user_         by user
@@ -70,13 +49,12 @@ class ConversationMember : TModel<ConversationMember>() {
     @TMignore var archived_     by archived
     @TMignore var unread_       by unread
     @TMignore var lastReadAt_   by lastReadAt
-    @TMignore var hidden_       by hidden
 
     companion object { val tms by lazy { Tms(ConversationMember::class) } }
 }
 
 // ---------------------------------------------------------------------------
-// Message
+// Message : RG-M1 à RG-M10
 // ---------------------------------------------------------------------------
 
 class Message : TModel<Message>() {
@@ -84,12 +62,11 @@ class Message : TModel<Message>() {
     var conversation = ModelField(Conversation::class)
     var author       = ModelField(User::class)
     var text         = TextField().default("")
-    var replyTo      = ModelField(Message::class)       // auto-référence (0..1)
-    var attachment   = ModelField(Media::class)         // pièce jointe optionnelle (0..1)
+    var replyTo      = ModelField(Message::class)   // 0..1, même conversation (RG-M8)
+    var attachment   = TextField().default("")      // nom du fichier joint (RG-M4)
     var edited       = BoolField().default(false)
-    var deleted      = BoolField().default(false)
+    var deleted      = BoolField().default(false)   // suppression douce (RG-M6)
     var sentAt       = TimeField()
-    var deletedForIds = TextField().default("")   // ids séparés par virgule, ex: "7,12"
 
     @TMignore var conversation_ by conversation
     @TMignore var author_       by author
@@ -99,20 +76,19 @@ class Message : TModel<Message>() {
     @TMignore var edited_       by edited
     @TMignore var deleted_      by deleted
     @TMignore var sentAt_       by sentAt
-    @TMignore var deletedForIds_ by deletedForIds
 
     companion object { val tms by lazy { Tms(Message::class) } }
 }
 
 // ---------------------------------------------------------------------------
-// Reaction — une ligne par réaction (RG-R2 : au plus une par user par message)
+// Reaction : au plus une par utilisateur et par message (RG-R2)
 // ---------------------------------------------------------------------------
 
 class Reaction : TModel<Reaction>() {
 
     var message = ModelField(Message::class)
     var user    = ModelField(User::class)
-    var emoji   = TextField().default("")   // 👍 ❤️ 😂 😮
+    var emoji   = TextField().default("")   // 👍 ❤️ 😂 😮 (RG-R1)
 
     @TMignore var message_ by message
     @TMignore var user_    by user
