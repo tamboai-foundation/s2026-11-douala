@@ -9,33 +9,35 @@ import ai.tambo.tmodeler.model.TMignore
 import ai.tambo.tmodeler.ms.Tms
 
 // ---------------------------------------------------------------------------
-// User
+// User : RG-U1 à RG-U12
 // ---------------------------------------------------------------------------
 
 class User : TModel<User>() {
 
     var name         = TextField().default("")
-    var phone        = TextField().default("").unique()
-    var passwordHash = TextField().default("")
-    var active       = BoolField().default(true)
-    var createdAt    = TimeField()
+    var identifier   = TextField().default("").unique()   // téléphone ou e-mail (RG-U2)
+    var passwordHash = TextField().default("")            // empreinte du mot de passe (RG-U4)
+    var bio          = TextField().default("")            // description du profil (RG-U9)
+    var joinedAt     = TimeField()                        // « Membre depuis le … » (RG-U7)
+    var deleted      = BoolField().default(false)         // compte supprimé (RG-U12)
 
     @TMignore var name_         by name
-    @TMignore var phone_        by phone
+    @TMignore var identifier_   by identifier
     @TMignore var passwordHash_ by passwordHash
-    @TMignore var active_       by active
-    @TMignore var createdAt_    by createdAt
+    @TMignore var bio_          by bio
+    @TMignore var joinedAt_     by joinedAt
+    @TMignore var deleted_      by deleted
 
     companion object { val tms by lazy { Tms(User::class) } }
 }
 
 // ---------------------------------------------------------------------------
-// Session — utilisateur connecté (un seul enregistrement en local)
+// Session : utilisateur connecté sur ce navigateur (RG-U6)
 // ---------------------------------------------------------------------------
 
 class Session : TModel<Session>() {
 
-    var currentUser = ModelField(User::class)
+    var currentUser = ModelField(User::class)   // 0..1
 
     @TMignore var currentUser_ by currentUser
 

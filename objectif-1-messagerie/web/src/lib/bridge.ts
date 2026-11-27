@@ -161,10 +161,9 @@ class MessagingBridgeCore implements MessagingBridge {
         text:           r.text as string,
         time:           parseDate(r.sentAt as string),
         replyToId:      r.replyToId !== '0' ? Number(r.replyToId) : undefined,
-        attachment:     r.attachmentId ? (r.attachmentId as string) : undefined,
+        attachment:     r.attachment ? (r.attachment as string) : undefined,
         edited:         Boolean(r.edited),
         deleted:        Boolean(r.deleted),
-        deletedForMe:   (r.deletedForIds as string ?? '').split(',').includes(this.currentUserId),
         reactions:      parseReactions(r.reactions as string),
       }))
     )
@@ -196,6 +195,7 @@ class MessagingBridgeCore implements MessagingBridge {
       this.currentUserId,
       text,
       String(opts?.replyToId ?? 0),
+      opts?.attachment ?? '',
     )
     this._loadMessages(String(conversationId))
     this.emit()
@@ -204,7 +204,8 @@ class MessagingBridgeCore implements MessagingBridge {
   edit(messageId: number, text: string): void {
     const c = getCore()
     if (!c) return
-    c.ngomaEditMessage(String(messageId), this.currentUserId, text)
+    const raw = c.ngomaEditMessage(String(messageId), this.currentUserId, text)
+    if (raw.includes('"error"')) console.error('[NGoma] modification du message refusée :', raw)
     this._reloadAllMessages()
     this.emit()
   }
@@ -217,12 +218,9 @@ class MessagingBridgeCore implements MessagingBridge {
     this.emit()
   }
 
-  removeForMe(messageId: number): void {
-    const c = getCore()
-    if (!c) return
-    c.ngomaDeleteMessageForMe(String(messageId), this.currentUserId)
-    this._reloadAllMessages()
-    this.emit()
+  /** « Supprimer pour moi » : hors conception v2 (ajout non prévu par les interfaces Foundation). */
+  removeForMe(_messageId: number): void {
+    console.warn('[NGoma] « Supprimer pour moi » n\'est pas prévu par la conception v2.')
   }
 
   react(messageId: number, emoji: string): void {
@@ -262,6 +260,7 @@ class MessagingBridgeCore implements MessagingBridge {
    * title = numéro de téléphone de l'interlocuteur (RG-C3).
    * RG-C2 : si la conversation existe déjà, retourne son id.
    */
+  /** Supprime la conversation du côté de l'utilisateur connecté seulement. */
   deleteConversation(conversationId: number): void {
     const c = getCore()
     if (!c) return
