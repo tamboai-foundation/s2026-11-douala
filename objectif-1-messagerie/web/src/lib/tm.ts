@@ -7,41 +7,43 @@ export type NGomaCore = {
   ngomaInit(dbName: string): boolean
 
   // ── Module utilisateurs ──────────────────────────────────────────────────
-  ngomaRegister(name: string, phone: string, passwordHash: string): string
-  ngomaLogin(phone: string, passwordHash: string): string
+  ngomaRegister(name: string, identifier: string, passwordHash: string): string
+  ngomaLogin(identifier: string, passwordHash: string): string
   ngomaRestoreSession(): string
   ngomaLogout(): string
-  ngomaGetUser(userId: string): string
-  ngomaUpdateProfile(userId: string, newName: string, newPhone: string, newPasswordHash: string): string
-  ngomaSetActive(userId: string, active: boolean): string
+  ngomaUsers(query: string): string
   ngomaSearchUsers(query: string, currentUserId: string): string
-  ngomaFindUserByPhone(phone: string): string
+  ngomaGetUser(userId: string): string
+  ngomaUpdateProfile(userId: string, newName: string, newBio: string): string
+  ngomaDeleteAccount(userId: string): string
 
   // ── Module conversations ─────────────────────────────────────────────────
   ngomaConversations(userId: string, showArchived: boolean): string
-  ngomaCreateConversation(creatorId: string, otherPhone: string): string
+  ngomaCreateConversation(creatorId: string, otherIdentifier: string): string
   ngomaSetPinned(conversationId: string, userId: string, value: boolean): string
   ngomaSetMuted(conversationId: string, userId: string, value: boolean): string
   ngomaSetArchived(conversationId: string, userId: string, value: boolean): string
   ngomaMarkRead(conversationId: string, userId: string): string
   ngomaMessages(conversationId: string): string
-  ngomaSend(conversationId: string, authorId: string, text: string, replyToId: string): string
+  ngomaSend(conversationId: string, authorId: string, text: string, replyToId: string, attachment: string): string
   ngomaEditMessage(messageId: string, authorId: string, newText: string): string
   ngomaDeleteMessage(messageId: string, authorId: string): string
-  ngomaDeleteMessageForMe(messageId: string, userId: string): string
   ngomaDeleteConversation(conversationId: string, userId: string): string
   ngomaReact(messageId: string, userId: string, emoji: string): string
 
   // ── Module publications ──────────────────────────────────────────────────
   ngomaPosts(): string
   ngomaUserPosts(authorId: string): string
-  ngomaCreatePost(authorId: string, type: string, caption: string): string
+  ngomaCreatePost(authorId: string, caption: string, mediaType: string, mediaData: string, sizeBytes: string): string
+  ngomaMediaData(mediaId: string): string
   ngomaEditPost(postId: string, authorId: string, newCaption: string): string
   ngomaDeletePost(postId: string, authorId: string): string
-  ngomaLikePost(postId: string, userId: string, emoji: string): string
+  ngomaToggleLike(postId: string, userId: string): string
   ngomaComments(postId: string): string
-  ngomaAddComment(postId: string, authorId: string, text: string): string
-  ngomaAddReply(commentId: string, authorId: string, text: string): string
+  ngomaAddComment(postId: string, authorId: string, text: string, parentId: string): string
+  ngomaEditComment(commentId: string, authorId: string, text: string): string
+  ngomaRemoveComment(commentId: string, authorId: string): string
+  ngomaToggleCommentLike(commentId: string, userId: string): string
 }
 
 let core: NGomaCore | null = null
