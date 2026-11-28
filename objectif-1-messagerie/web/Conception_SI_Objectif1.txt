@@ -1,6 +1,6 @@
 ﻿==========================================================================================
 CONCEPTION DU SYSTÈME D'INFORMATION
-Objectif 1 · Application de messagerie et de partage de contenus (CRUD) · Tâche SI-M01
+Objectif 1 · Application de messagerie et de partage de contenus (CRUD) · Tâche SI-M01 · Version 2, alignée sur les interfaces Foundation
 ==========================================================================================
 
 
@@ -8,73 +8,95 @@ Objectif 1 · Application de messagerie et de partage de contenus (CRUD) · Tâc
 1. CONTEXTE ET PÉRIMÈTRE
 ========================
 
-L'application comporte trois modules développés en parallèle et reliés entre eux : Gestion
-des utilisateurs, Conversations et messages, Publications et interactions. Ce document
-décrit les entités, leurs attributs, leurs relations et les règles de gestion, puis leur
-traduction en modèles TModeler.
+L'application comporte trois modules reliés entre eux : Gestion des utilisateurs,
+Conversations et messages, Publications et interactions. Les interfaces (écrans) sont
+fournies par Foundation : l'équipe ne les développe pas et ne les modifie pas. L'équipe
+conçoit le système d'information (entités, relations, règles de gestion), l'écrit en
+modèles TModeler, et le connecte aux écrans en implémentant les interfaces AccountBridge,
+MessagingBridge et VideoBridge définies par Foundation dans src/lib/types.ts.
 
 
 Hypothèses techniques
 ---------------------
-  - Pas de serveur back-end : toutes les données sont stockées dans une base de données
-    locale, exécutée dans le navigateur (TModeler compilé en Kotlin/Wasm).
-  - Les interfaces (UI) sont fournies par Foundation ; nous concevons le SI et le
-    connectons à ces interfaces.
+  - Pas de serveur back-end : toutes les données sont dans une base locale exécutée dans
+    le navigateur (TModeler compilé en Kotlin/Wasm).
   - Chaque modèle possède automatiquement un identifiant local _id (clé primaire
-    auto-incrémentée). L'identifiant serveur id existe aussi mais n'est pas utilisé tant
-    qu'il n'y a pas de serveur.
-  - Les 4 emojis disponibles dans l'interface fournie sont : 👍 ❤️ 😂 😮.
+    auto-incrémentée).
+  - Le seul fichier côté interface que l'équipe complète est le point de branchement
+    src/lib/bridge.ts (et le chargeur src/lib/tm.ts), comme l'indique le README de
+    Foundation. Les écrans (src/components) et les fichiers types.ts et mock.ts ne sont
+    pas modifiés.
+  - Les 4 emojis de réaction proposés par l'écran de conversation sont : 👍 ❤️ 😂 😮.
 
 
 Hors périmètre pour l'instant
 -----------------------------
   - Conversations de groupe : une conversation réunit exactement deux personnes.
-  - Bio et photo de profil.
+  - Photo de profil (l'écran affiche un avatar généré à partir du nom).
   - Chatbot.
   - Épinglage des messages (on épingle uniquement des conversations).
-  - Modification et suppression des commentaires et des réponses.
-  - Fil de publications (tri et pagination d'un fil).
+  - Publications audio (l'écran n'accepte que les photos et les vidéos).
+  - Photos et vidéos de plus de 500 Ko : sans serveur, le navigateur ne peut pas les
+    conserver (voir RG-F6).
   - Temps réel et synchronisation avec un serveur.
 
 
 
-2. LES RELATIONS EN BREF
+2. ÉCRANS FOURNIS PAR FOUNDATION
+================================
+
+Le tableau indique, pour chaque écran, ce que l'utilisateur peut y faire et la fonction de
+l'interface (bridge) que l'écran appelle. C'est ce que notre SI doit permettre.
+
+  Écran                   | Ce qu'on y fait                                                                                                                                                                                                                                              | Fonctions appelées
+  ------------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------
+  Connexion / inscription | S'inscrire (nom, téléphone ou e-mail, mot de passe) ; se connecter (téléphone ou e-mail, mot de passe) ; la session est restaurée au démarrage                                                                                                               | AccountBridge : register, login, restoreSession
+  Messages                | Liste des conversations (recherche, filtres) ; ouvrir une conversation ; envoyer, répondre, modifier, supprimer un message ; réagir ; joindre un fichier ; épingler, mettre en sourdine, archiver une conversation ; supprimer une conversation de son côté  | MessagingBridge : conversations, lastMessage, messages, send, edit, remove, react, markRead, setPinned, setMuted, setArchived, deleteConversation, createConversation
+  Vidéos (fil)            | Voir les publications de tous, la plus récente en premier ; publier (photo ou vidéo facultative, et/ou légende) ; modifier la légende ou supprimer sa publication ; aimer ; commenter, répondre, modifier ou supprimer son commentaire, aimer un commentaire | VideoBridge : posts, publish, editPost, removePost, toggleLike, comments, addComment, editComment, removeComment, toggleCommentLike
+  Personnes               | Voir tous les utilisateurs ; rechercher par nom ou par description ; ouvrir le profil d'une personne (nom, description, date d'inscription, ses publications) ; « Écrire un message »                                                                        | AccountBridge : users, user ; VideoBridge : userPosts ; MessagingBridge : createConversation
+  Profil                  | Voir et modifier son nom et sa description ; voir ses publications (« Mes vidéos ») ; se déconnecter ; supprimer définitivement son compte (après confirmation)                                                                                              | AccountBridge : user, updateProfile, logout, deleteAccount ; VideoBridge : userPosts
+
+
+
+3. LES RELATIONS EN BREF
 ========================
 
 Une relation est un lien entre deux entités. On la décrit en posant la question dans les
 deux sens : « un message appartient à combien de conversations ? » (une seule) et « une
 conversation contient combien de messages ? » (plusieurs).
 
-  Cas                   | Exemple dans l'application                                                                | En TModeler
-  ----------------------+-------------------------------------------------------------------------------------------+------------
-  1 → 1 / 0..1          | Un message a au plus une pièce jointe                                                     | ModelField dans l'entité qui référence
-  1 → plusieurs         | Une conversation contient plusieurs messages                                              | ModelField du côté « plusieurs » (Message.conversation)
-  plusieurs ↔ plusieurs | Un utilisateur participe à plusieurs conversations ; une conversation a deux utilisateurs | Entité intermédiaire (ConversationMember) avec deux ModelField
+  Cas                   | Exemple dans l'application                                                                        | En TModeler
+  ----------------------+---------------------------------------------------------------------------------------------------+------------
+  0..1                  | Une publication a au plus un média                                                                | ModelField dans l'entité qui référence
+  1 → plusieurs         | Une conversation contient plusieurs messages                                                      | ModelField du côté « plusieurs » (Message.conversation)
+  plusieurs ↔ plusieurs | Un utilisateur aime plusieurs publications ; une publication est aimée par plusieurs utilisateurs | Entité intermédiaire (Like) avec deux ModelField
+  vers soi-même         | Une réponse est un commentaire rattaché à un autre commentaire                                    | ModelField vers la même classe (Comment.parent)
 
 Règle pratique : le champ de relation se place toujours dans l'entité qui peut dire «
-j'appartiens à… ». Notation des cardinalités : 1 = exactement un ; 0..1 = zéro ou un ;
-0..* = zéro ou plusieurs ; 2 = exactement deux.
+j'appartiens à… ». Cardinalités : 1 = exactement un ; 0..1 = zéro ou un ; 0..* = zéro ou
+plusieurs ; 2 = exactement deux.
 
 
 
-3. ENTITÉS ET ATTRIBUTS
+4. ENTITÉS ET ATTRIBUTS
 =======================
 
-Les champs de relation sont détaillés dans la partie 4. Types TModeler : Text = TextField,
-Int = IntField (Long), Bool = BoolField, Time = TimeField, File = FileField.
+Types TModeler : Text = TextField, Int = IntField (Long), Bool = BoolField, Time =
+TimeField, File = FileField. « → X » désigne une relation vers l'entité X (ModelField).
 
 
 Module Gestion des utilisateurs
 -------------------------------
 
 > User (utilisateur)
-  Attribut     | Type               | Description
-  -------------+--------------------+------------
-  name         | Text               | Nom affiché, obligatoire
-  phone        | Text, unique       | Identifiant de connexion
-  passwordHash | Text               | Empreinte (hash) du mot de passe, jamais le mot de passe en clair
-  active       | Bool (défaut true) | false = compte désactivé
-  createdAt    | Time               | Date d'inscription
+  Attribut     | Type                | Description
+  -------------+---------------------+------------
+  name         | Text                | Nom affiché, obligatoire
+  identifier   | Text, unique        | Identifiant de connexion : téléphone ou e-mail (champ « Téléphone ou e-mail » de l'écran)
+  passwordHash | Text                | Empreinte (hash) du mot de passe, jamais le mot de passe en clair
+  bio          | Text (défaut "")    | Description du profil, facultative (« Parlez de vous en quelques mots »)
+  joinedAt     | Time                | Date d'inscription (« Membre depuis le … »)
+  deleted      | Bool (défaut false) | true = compte supprimé par son propriétaire
 
 
 > Session
@@ -93,6 +115,9 @@ Module Conversations et messages
   createdAt     | Time   | Date de création
   lastMessageAt | Time   | Date du dernier message, sert à trier la liste des conversations
 
+La conversation n'a pas de titre stocké : le titre affiché (Conversation.title de
+l'interface) est le nom de l'autre participant.
+
 
 > ConversationMember (participant)
 Une ligne par participant : chaque conversation en a exactement deux. Elle porte les
@@ -107,6 +132,7 @@ réglages propres à chaque personne.
   archived     | Bool (défaut false) | Conversation archivée par ce participant
   unread       | Int (défaut 0)      | Nombre de messages non lus par ce participant
   lastReadAt   | Time                | Dernière ouverture de la conversation par ce participant
+  hidden       | Bool (défaut false) | Conversation supprimée par ce participant, de son côté seulement
 
 
 > Message
@@ -116,7 +142,7 @@ réglages propres à chaque personne.
   author       | → User              | Auteur
   text         | Text (défaut "")    | Contenu, sans limite de longueur
   replyTo      | → Message (0..1)    | Message auquel celui-ci répond
-  attachment   | → Media (0..1)      | Pièce jointe unique, facultative
+  attachment   | Text (défaut "")    | Nom du fichier joint (l'écran transmet uniquement le nom du fichier)
   edited       | Bool (défaut false) | Le message a été modifié
   deleted      | Bool (défaut false) | Le message a été supprimé (suppression douce)
   sentAt       | Time                | Date d'envoi
@@ -134,61 +160,67 @@ Module Publications et interactions
 -----------------------------------
 
 > Post (publication)
-  Attribut      | Type                | Description
-  --------------+---------------------+------------
-  author        | → User              | Auteur
-  type          | Text                | image, audio, video ou legende
-  caption       | Text (défaut "")    | Légende ; obligatoire si type = legende
-  media         | → Media (0..1)      | Fichier publié ; absent si type = legende
-  likesCount    | Int (défaut 0)      | Nombre total de likes
-  commentsCount | Int (défaut 0)      | Nombre de commentaires
-  edited        | Bool (défaut false) | La publication a été modifiée
-  publishedAt   | Time                | Date de publication
+  Attribut    | Type                | Description
+  ------------+---------------------+------------
+  author      | → User              | Auteur
+  caption     | Text (défaut "")    | Légende, facultative si un média est présent
+  media       | → Media (0..1)      | Photo ou vidéo de 500 Ko maximum, facultative (RG-F3)
+  edited      | Bool (défaut false) | La légende a été modifiée
+  publishedAt | Time                | Date de publication
+
+Le type de publication n'est pas stocké : il se déduit du média (photo, vidéo, ou légende
+seule s'il n'y a pas de média). Le nombre de likes se calcule à partir des lignes Like.
 
 
-> Like
+> Like (j'aime sur une publication)
   Attribut  | Type   | Description
   ----------+--------+------------
-  post      | → Post | Publication likée
-  user      | → User | Auteur du like
-  emoji     | Text   | Type de like, une valeur parmi 👍 ❤️ 😂 😮
+  post      | → Post | Publication aimée
+  user      | → User | Utilisateur qui aime
   createdAt | Time   | Date du like
 
 
-> Comment (commentaire)
-  Attribut  | Type             | Description
-  ----------+------------------+------------
-  post      | → Post           | Publication commentée
-  author    | → User           | Auteur
-  text      | Text (défaut "") | Contenu
-  createdAt | Time             | Date du commentaire
+> Comment (commentaire ou réponse)
+Un commentaire et une réponse sont la même entité, comme dans l'interface (PostComment
+avec parentId) : une réponse est un commentaire qui a un parent.
+
+  Attribut  | Type                | Description
+  ----------+---------------------+------------
+  post      | → Post              | Publication commentée
+  author    | → User              | Auteur
+  parent    | → Comment (0..1)    | Commentaire auquel on répond ; vide = commentaire principal
+  text      | Text (défaut "")    | Contenu
+  edited    | Bool (défaut false) | Le commentaire a été modifié
+  deleted   | Bool (défaut false) | Le commentaire a été supprimé (suppression douce)
+  createdAt | Time                | Date du commentaire
 
 
-> Reply (réponse à un commentaire)
-  Attribut  | Type             | Description
-  ----------+------------------+------------
-  comment   | → Comment        | Commentaire auquel on répond
-  author    | → User           | Auteur
-  text      | Text (défaut "") | Contenu
-  createdAt | Time             | Date de la réponse
+> CommentLike (j'aime sur un commentaire)
+  Attribut  | Type      | Description
+  ----------+-----------+------------
+  comment   | → Comment | Commentaire aimé
+  user      | → User    | Utilisateur qui aime
+  createdAt | Time      | Date du like
 
 
 Entité partagée
 ---------------
 
 > Media (fichier)
-Un seul modèle pour tous les fichiers, utilisé par Message et par Post. Il contient la
-référence du fichier, jamais son contenu.
+Un seul modèle pour les fichiers publiés. Sans serveur, il contient le contenu du fichier
+encodé en texte (dataUrl), limité à 500 Ko ; le champ file est gardé pour le jour où un
+serveur stockera les fichiers et où le modèle ne contiendra plus que leur référence.
 
-  Attribut  | Type           | Description
-  ----------+----------------+------------
-  file      | File           | Référence du fichier stocké dans le navigateur
-  type      | Text           | image, audio ou video
-  sizeBytes | Int (défaut 0) | Taille du fichier en octets, pour contrôler les limites
+  Attribut  | Type             | Description
+  ----------+------------------+------------
+  file      | File             | Référence du fichier, pour un futur serveur (non utilisée sans serveur)
+  dataUrl   | Text (défaut "") | Contenu du fichier encodé en base64 (data URL), sans serveur
+  type      | Text             | image ou video
+  sizeBytes | Int (défaut 0)   | Taille du fichier en octets, pour contrôler les limites
 
 
 
-4. ASSOCIATIONS ET CARDINALITÉS
+5. ASSOCIATIONS ET CARDINALITÉS
 ===============================
 
 Chaque ligne se lit dans les deux sens. Exemple : « une conversation contient 0 ou
@@ -213,23 +245,23 @@ Module Conversations et messages
   Conversation | 1       | contient                | 0..*    | Message            | conversation (Message)
   User         | 1       | écrit                   | 0..*    | Message            | author (Message)
   Message      | 0..1    | est cité en réponse par | 0..*    | Message            | replyTo (Message)
-  Message      | 0..1    | a pour pièce jointe     | 0..1    | Media              | attachment (Message)
   Message      | 1       | reçoit                  | 0..*    | Reaction           | message (Reaction)
   User         | 1       | pose                    | 0..*    | Reaction           | user (Reaction)
 
 
 Module Publications et interactions
 -----------------------------------
-  Entité A | Card. A | Association  | Card. B | Entité B | Champ (dans)
-  ---------+---------+--------------+---------+----------+-------------
-  User     | 1       | publie       | 0..*    | Post     | author (Post)
-  Post     | 0..1    | a pour média | 0..1    | Media    | media (Post)
-  Post     | 1       | reçoit       | 0..*    | Like     | post (Like)
-  User     | 1       | met          | 0..*    | Like     | user (Like)
-  Post     | 1       | reçoit       | 0..*    | Comment  | post (Comment)
-  User     | 1       | écrit        | 0..*    | Comment  | author (Comment)
-  Comment  | 1       | reçoit       | 0..*    | Reply    | comment (Reply)
-  User     | 1       | écrit        | 0..*    | Reply    | author (Reply)
+  Entité A | Card. A | Association     | Card. B | Entité B    | Champ (dans)
+  ---------+---------+-----------------+---------+-------------+-------------
+  User     | 1       | publie          | 0..*    | Post        | author (Post)
+  Post     | 0..1    | a pour média    | 0..1    | Media       | media (Post)
+  Post     | 1       | reçoit          | 0..*    | Like        | post (Like)
+  User     | 1       | aime via        | 0..*    | Like        | user (Like)
+  Post     | 1       | reçoit          | 0..*    | Comment     | post (Comment)
+  User     | 1       | écrit           | 0..*    | Comment     | author (Comment)
+  Comment  | 0..1    | a pour réponses | 0..*    | Comment     | parent (Comment)
+  Comment  | 1       | reçoit          | 0..*    | CommentLike | comment (CommentLike)
+  User     | 1       | aime via        | 0..*    | CommentLike | user (CommentLike)
 
 
 Schéma d'ensemble
@@ -239,71 +271,89 @@ Schéma d'ensemble
     User (1) ──(0..*) ConversationMember (2) ──(1) Conversation
     Conversation (1) ──(0..*) Message (0..*) ──(1) User [auteur]
     Message
-     ├── replyTo    ──(0..1)──> Message
-     ├── attachment ──(0..1)──> Media
+     ├── replyTo ──(0..1)──> Message
      └── (1) ──(0..*) Reaction (0..*) ──(1) User
     
     User (1) ──(0..*) Post
     Post
      ├── media ──(0..1)──> Media
      ├── (1) ──(0..*) Like    (0..*) ──(1) User
-     └── (1) ──(0..*) Comment (1) ──(0..*) Reply
-         Comment et Reply ──(1)──> User [auteur]
+     └── (1) ──(0..*) Comment (0..*) ──(1) User [auteur]
+                      ├── parent ──(0..1)──> Comment  [réponse]
+                      └── (1) ──(0..*) CommentLike (0..*) ──(1) User
 
 
 
-5. RÈGLES DE GESTION
+6. RÈGLES DE GESTION
 ====================
 
-Pour chaque règle, la colonne « Qui » indique ce qui la fait respecter : TModeler
-(déclarée dans le modèle : .unique(), .default(), type de relation) ou Code (vérification
-dans le code Kotlin avant d'enregistrer). Comme il n'y a pas de serveur, aucune règle
-n'est garantie par un back-end.
+La colonne « Qui » indique ce qui fait respecter la règle : TModeler (déclarée dans le
+modèle : .unique(), .default(), type de relation) ou Code (vérification dans le code
+Kotlin du bridge avant d'enregistrer). Comme il n'y a pas de serveur, aucune règle n'est
+garantie par un back-end.
 
 
 Gestion des utilisateurs
 ------------------------
-RG-U1   Inscription : le nom, le téléphone et le mot de passe sont obligatoires. [Code]
-RG-U2   Le numéro de téléphone est unique : deux comptes ne peuvent pas avoir le même.
-        [TModeler (.unique()) + Code]
+RG-U1   Inscription : le nom, l'identifiant (téléphone ou e-mail) et le mot de passe sont
+        obligatoires. [Code]
+RG-U2   L'identifiant est unique : deux comptes ne peuvent pas avoir le même. [TModeler
+        (.unique()) + Code]
 RG-U3   Le nom comporte entre 2 et 50 caractères. [Code]
-RG-U4   Le mot de passe comporte au moins 8 caractères. Il n'est jamais stocké en clair :
-        seule son empreinte (hash) est enregistrée dans passwordHash. [Code]
-RG-U5   Connexion : elle réussit seulement si le téléphone correspond à un compte actif et
-        que l'empreinte du mot de passe saisi est identique à passwordHash. [Code]
+RG-U4   Le mot de passe comporte au moins 8 caractères. Il n'est jamais stocké en clair ni
+        simplement encodé (base64) : seule son empreinte (par exemple SHA-256) est enregistrée
+        dans passwordHash. [Code]
+RG-U5   Connexion : elle réussit seulement si l'identifiant correspond à un compte non
+        supprimé et que l'empreinte du mot de passe saisi est identique à passwordHash. [Code]
 RG-U6   L'utilisateur connecté est enregistré dans le modèle Session, jamais dans le
-        localStorage. La déconnexion vide Session.currentUser. [Code]
-RG-U7   La date d'inscription est fixée à la création et ne change plus. [Code]
-RG-U8   Un utilisateur ne peut modifier que son propre profil (nom, téléphone, mot de
-        passe). Un nouveau téléphone est revérifié selon RG-U2. [Code]
-RG-U9   La recherche d'utilisateurs se fait par nom ou par téléphone. Elle exclut
-        l'utilisateur connecté et les comptes désactivés. [Code]
-RG-U10  Gestion des comptes : un utilisateur peut désactiver son compte (active = false)
-        puis le réactiver. Un compte désactivé ne peut plus se connecter et n'apparaît plus dans
-        la recherche ; ses messages et publications restent en place pour ne pas casser
-        l'historique des autres. [Code]
+        localStorage. Au démarrage, la session est restaurée ; la déconnexion vide
+        Session.currentUser. [Code]
+RG-U7   La date d'inscription (joinedAt) est fixée à la création et ne change plus. [Code]
+RG-U8   Un utilisateur ne peut modifier que son propre profil : son nom et sa description.
+        Un nom vide n'est pas enregistré (l'ancien nom est conservé). [Code]
+RG-U9   La description (bio) est facultative ; si elle est vide, l'écran affiche « Pas de
+        description ». [TModeler (.default(""))]
+RG-U10  La liste des personnes affiche tous les comptes non supprimés, y compris
+        l'utilisateur connecté (marqué « (vous) »). La recherche porte sur le nom ou la
+        description, sans tenir compte des majuscules. [Code]
+RG-U11  Le profil d'une personne affiche son nom, sa description, sa date d'inscription et
+        ses publications. Le bouton « Écrire un message » n'apparaît pas sur son propre profil.
+        [Code]
+RG-U12  Suppression du compte : elle est définitive et demandée après confirmation. Le
+        compte passe à deleted = true, ses données personnelles sont effacées (nom remplacé par «
+        Compte supprimé », identifiant, mot de passe et description vidés), la session est fermée
+        et l'identifiant redevient disponible. Ses publications sont supprimées selon RG-P7 ; ses
+        messages restent dans les conversations des autres pour ne pas casser leur historique.
+        [Code]
 
 
 Conversations
 -------------
 RG-C1   Une conversation réunit exactement 2 participants distincts : on ne peut pas
         ouvrir une conversation avec soi-même. [Code]
-RG-C2   Il ne peut exister qu'une seule conversation entre deux mêmes personnes. Si elle
-        existe déjà, on l'ouvre au lieu d'en créer une nouvelle. [Code]
+RG-C2   Il ne peut exister qu'une seule conversation entre deux mêmes personnes. « Écrire
+        un message » ouvre la conversation existante au lieu d'en créer une nouvelle. [Code]
 RG-C3   Créer une conversation crée la Conversation et ses deux ConversationMember (le
-        créateur et l'autre personne), qui doit avoir un compte actif. [Code]
-RG-C4   Une conversation n'a pas de titre : l'écran affiche le nom de l'autre participant.
-        [Code]
+        créateur et l'autre personne, dont le compte ne doit pas être supprimé). [Code]
+RG-C4   Une conversation n'a pas de titre stocké : l'écran affiche le nom de l'autre
+        participant. [Code]
 RG-C5   Épingler, mettre en sourdine et archiver sont des réglages personnels : ils ne
         changent rien pour l'autre participant. [TModeler (champs dans ConversationMember)]
 RG-C6   Seuls les deux participants peuvent voir les messages d'une conversation et y
         écrire. [Code]
 RG-C7   La liste des conversations affiche d'abord les conversations épinglées, puis les
-        autres par date du dernier message (lastMessageAt), la plus récente en haut. Les
-        conversations archivées sont masquées par défaut. Le tri est fait par la requête TModeler.
+        autres par date du dernier message, la plus récente en haut. Les conversations archivées
+        sont masquées par défaut, les conversations supprimées (RG-C10) ne sont pas affichées. Le
+        tri est fait par la requête TModeler. [Code]
+RG-C8   L'aperçu d'une conversation dans la liste montre son dernier message non supprimé.
         [Code]
-RG-C8   L'historique d'une conversation affiche ses messages dans l'ordre chronologique
+RG-C9   L'historique d'une conversation affiche ses messages dans l'ordre chronologique
         d'envoi. [Code]
+RG-C10  Un participant peut supprimer une conversation de son côté seulement, après
+        confirmation : hidden passe à true sur sa ligne ConversationMember. L'autre participant la
+        garde avec tous les messages. La conversation réapparaît, avec son historique, si l'autre
+        participant envoie un message ou si l'utilisateur rouvre une conversation avec la même
+        personne (RG-C2 reste respectée). Les messages ne sont jamais effacés. [Code]
 
 
 Messages
@@ -314,13 +364,15 @@ RG-M2   Un message n'est pas vide : il contient du texte, une pièce jointe, ou 
         Le texte n'a pas de limite de longueur. [Code]
 RG-M3   L'auteur d'un message doit être l'un des deux participants de la conversation.
         [Code]
-RG-M4   Un message a au plus 1 pièce jointe (image, audio ou vidéo). [TModeler (ModelField
-        0..1) + Code]
+RG-M4   Un message a au plus 1 pièce jointe ; on enregistre son nom de fichier. [TModeler
+        (un seul champ) + Code]
 RG-M5   Seul l'auteur peut modifier son message ; la modification passe edited à true.
-        [Code]
+        Elle porte uniquement sur le texte : la pièce jointe ne peut pas être remplacée (l'écran
+        ne le permet pas). Pour changer de fichier, on supprime le message et on en envoie un
+        nouveau. On peut ajouter ou modifier le texte d'un message qui a une pièce jointe. [Code]
 RG-M6   Seul l'auteur peut supprimer son message. La suppression est douce : deleted passe
-        à true, le texte et la pièce jointe sont retirés et l'écran affiche « Message supprimé ».
-        La ligne est conservée pour ne pas casser les réponses qui la citent. [Code]
+        à true, le texte et la pièce jointe sont vidés. La ligne est conservée pour ne pas casser
+        les réponses qui la citent. [Code]
 RG-M7   Un message supprimé ne peut plus être modifié. [Code]
 RG-M8   Un message ne peut répondre qu'à un message de la même conversation. [Code]
 RG-M9   L'envoi d'un message met à jour lastMessageAt de la conversation et ajoute 1 au
@@ -334,63 +386,80 @@ Réactions aux messages
 ----------------------
 RG-R1   Une réaction est l'un des 4 emojis : 👍 ❤️ 😂 😮. [Code]
 RG-R2   Un utilisateur pose au plus une réaction par message. S'il choisit un autre emoji,
-        il remplace le précédent ; s'il choisit le même, la réaction est retirée. [Code]
+        il remplace le précédent ; s'il choisit le même, la réaction est retirée. L'écran affiche
+        le nombre de réactions par emoji. [Code]
 RG-R3   Seuls les participants de la conversation peuvent réagir. [Code]
 RG-R4   On ne peut pas réagir à un message supprimé. [Code]
 
 
 Publications
 ------------
-RG-P1   Une publication a obligatoirement un auteur et un type parmi : image, audio,
-        video, legende. [Code]
-RG-P2   Le média est facultatif. Une publication de type legende n'a pas de média et sa
-        légende est obligatoire (non vide). [Code]
-RG-P3   Une publication de type image, audio ou video a obligatoirement un média du même
-        type ; sa légende est facultative. [Code]
-RG-P4   Tout utilisateur connecté peut consulter les publications des autres utilisateurs.
+RG-P1   Une publication a un auteur et contient au moins une légende ou un média ; les
+        deux sont possibles. [Code]
+RG-P2   Le média est facultatif et ne peut être qu'une photo (image) ou une vidéo. [Code]
+RG-P3   Une publication sans média (légende seule) est affichée sur une carte colorée.
         [Code]
-RG-P5   Seul l'auteur peut modifier sa publication (légende et média) ; la modification
-        passe edited à true. Le type et le média doivent toujours respecter RG-P2 et RG-P3. [Code]
-RG-P6   Seul l'auteur peut supprimer sa publication. La suppression supprime aussi ses
-        likes, ses commentaires, leurs réponses et son média. [Code]
+RG-P4   Tout utilisateur connecté voit les publications de tous les utilisateurs, la plus
+        récente en premier. [Code]
+RG-P5   Le profil d'un utilisateur affiche ses propres publications. [Code]
+RG-P6   Seul l'auteur peut modifier sa publication : uniquement la légende ; la
+        modification passe edited à true. La légende d'une publication sans média ne peut pas
+        devenir vide (RG-P1). [Code]
+RG-P7   Seul l'auteur peut supprimer sa publication, après confirmation. La suppression
+        efface aussi ses likes, ses commentaires et leurs réponses, les likes de ces commentaires,
+        et son média. [Code]
 
 
-Likes
------
-RG-L1   Un like est l'un des 4 emojis : 👍 ❤️ 😂 😮. [Code]
-RG-L2   Sur une même publication, un utilisateur laisse au plus un like par type d'emoji,
-        donc au maximum 4 likes (un 👍, un ❤️, un 😂, un 😮). Le trio utilisateur + publication +
-        emoji est unique. [Code (TModeler ne gère pas l'unicité sur plusieurs champs)]
-RG-L3   Cliquer à nouveau sur un emoji déjà donné retire ce like. [Code]
-RG-L4   Chaque ajout de like ajoute 1 à likesCount, chaque retrait enlève 1 ; le compteur
-        ne descend jamais sous 0. [Code]
-RG-L5   Liker sa propre publication : à décider par l'équipe. [Décision d'équipe]
+Likes sur les publications
+--------------------------
+RG-L1   Un utilisateur aime une publication au plus une fois : le couple utilisateur +
+        publication est unique. [Code (TModeler ne gère pas l'unicité sur plusieurs champs)]
+RG-L2   Cliquer sur « J'aime » ajoute le like ; cliquer à nouveau le retire. [Code]
+RG-L3   Le nombre de likes affiché est le nombre de lignes Like de la publication. [Code]
+RG-L4   On peut aimer sa propre publication (l'écran ne l'interdit pas). [Code]
 
 
 Commentaires et réponses
 ------------------------
 RG-K1   Un commentaire ou une réponse n'est pas vide. [Code]
-RG-K2   Une réponse se rattache à un commentaire, jamais à une autre réponse : un seul
-        niveau de réponses. [TModeler (Reply pointe vers Comment)]
-RG-K3   Chaque nouveau commentaire ajoute 1 à commentsCount de la publication. [Code]
-RG-K4   Les commentaires et les réponses ne peuvent être ni modifiés ni supprimés pour
-        l'instant (hors périmètre). [Code]
-RG-K5   Les commentaires s'affichent du plus récent au plus ancien ; les réponses d'un
-        commentaire, dans l'ordre chronologique. [Code]
+RG-K2   Un seul niveau de réponses : répondre à une réponse rattache la nouvelle réponse
+        au commentaire principal. [Code]
+RG-K3   Seul l'auteur peut modifier son commentaire ; la modification passe edited à true.
+        [Code]
+RG-K4   Seul l'auteur peut supprimer son commentaire. La suppression est douce : deleted
+        passe à true et le texte est vidé. Un commentaire supprimé reste affiché (« supprimé »)
+        seulement s'il a encore des réponses non supprimées ; sinon il disparaît. [Code]
+RG-K5   Le nombre de commentaires affiché ne compte pas les commentaires supprimés. [Code]
+RG-K6   Les commentaires et leurs réponses s'affichent dans l'ordre chronologique, du plus
+        ancien au plus récent. [Code]
+RG-K7   Un utilisateur aime un commentaire au plus une fois (couple utilisateur +
+        commentaire unique) ; cliquer à nouveau retire le like. [Code]
+RG-K8   On ne peut ni répondre à un commentaire supprimé, ni l'aimer, ni le modifier.
+        [Code]
 
 
 Médias
 ------
-RG-F1   Tous les fichiers passent par un seul modèle Media, qui contient la référence du
-        fichier, jamais son contenu. [TModeler]
-RG-F2   Le type d'un média vaut obligatoirement image, audio ou video. Le type legende ne
-        concerne que les publications sans média. [Code]
-RG-F3   Une vidéo fait 100 Mo maximum (contrôle sur sizeBytes avant l'enregistrement).
-        [Code]
+RG-F1   Les fichiers publiés passent par un seul modèle Media. Sans serveur, il contient
+        le contenu du fichier (dataUrl) ; avec un serveur, il n'en contiendra plus que la
+        référence (file). [TModeler]
+RG-F2   Le type d'un média vaut obligatoirement image ou video. [Code]
+RG-F3   Une photo ou une vidéo fait 500 Ko maximum, contrôlé avant la lecture du fichier
+        et à nouveau par le core (sizeBytes). Au-delà, la publication est refusée et un message
+        est affiché dans la console. [Code]
 RG-F4   Les fichiers sont stockés dans le navigateur, dont l'espace est limité : en cas de
         quota dépassé, l'enregistrement est refusé avec un message clair. [Code]
-RG-F5   Dans les listes (conversations, messages), on ne charge pas le fichier lui-même :
-        on le charge seulement au moment de l'afficher. [Code]
+RG-F5   Dans les listes, on ne charge pas le fichier lui-même : on le charge seulement au
+        moment de l'afficher. [Code]
+RG-F6   Pourquoi 500 Ko : sur le web, TModeler range toute la base dans le stockage du
+        navigateur, environ 5 millions de caractères pour tout le site (messages et comptes
+        compris), et chaque enregistrement réécrit la table entière. Un fichier encodé en texte
+        occupe environ 1,4 fois sa taille : un média de 500 Ko occupe environ 685 000 caractères,
+        ce qui laisse de la place pour environ 6 médias de cette taille, à partager avec les
+        messages et les comptes. Un fichier de 1 Mo en occuperait 1,4 million : 3 ou 4 suffiraient
+        à bloquer l'application. Si le stockage est plein, l'enregistrement est refusé (RG-F4) :
+        il faut alors supprimer des publications. Les médias plus lourds attendront un serveur.
+        [Code]
 
 
 Règles techniques TModeler
@@ -402,20 +471,65 @@ RG-T2   Les dates et les grands nombres ne vont jamais dans un FloatField : util
 RG-T3   Toujours vérifier available() avant de lire une relation. [Code]
 RG-T4   Les filtres et les tris sont faits dans la requête TModeler, jamais en Kotlin
         après avoir tout chargé. Une liste se charge avec un TFlow, jamais avec all(). [Code]
-RG-T5   La base locale est nommée nom-DB_VERSION. Après toute modification de la structure
+RG-T5   Les accès aux données passent par TGate.data { … } avec save(), delete(), build()
+        ; jamais par les fonctions internes isave(), idelete(), ibuild(). [Code]
+RG-T6   La base locale est nommée nom-DB_VERSION. Après toute modification de la structure
         d'un modèle, incrémenter DB_VERSION dans NGomaCore.kt. [Code]
 
 
 
-6. MODÈLES TMODELER (KOTLIN)
+7. CHANGEMENTS PAR RAPPORT À LA VERSION 1
+=========================================
+
+  Élément                           | Version 1                                      | Version 2 (interfaces Foundation)
+  ----------------------------------+------------------------------------------------+----------------------------------
+  Identifiant de connexion          | phone (téléphone)                              | identifier : téléphone ou e-mail
+  Description du profil             | Hors périmètre                                 | bio, modifiable dans l'écran Profil
+  Date d'inscription                | createdAt                                      | joinedAt, affichée sur le profil
+  Gestion du compte                 | Désactivation / réactivation (active)          | Suppression définitive (deleted + effacement des données)
+  Recherche de personnes            | Par nom ou téléphone, sans soi-même            | Par nom ou description, soi-même inclus « (vous) »
+  Pièce jointe d'un message         | → Media                                        | Nom du fichier (Text), comme l'écran le transmet
+  Type de publication               | Champ type : image, audio, video, legende      | Déduit du média : photo, vidéo ou légende seule ; plus d'audio
+  Likes sur les publications        | Jusqu'à 4 (un par emoji) + compteur likesCount | Un seul « J'aime » par utilisateur ; nombre calculé
+  Réponses aux commentaires         | Entité Reply séparée                           | Comment avec un parent (une seule entité)
+  Commentaires                      | Ni modification ni suppression                 | Modification, suppression douce et likes de commentaires (CommentLike)
+  Fil des publications              | Hors périmètre                                 | Fil de toutes les publications, la plus récente en premier
+  Photos et vidéos des publications | Référence du fichier, vidéo de 100 Mo maximum  | Contenu enregistré dans Media.dataUrl, 500 Ko maximum (RG-F3, RG-F6)
+  Suppression d'une conversation    | Non prévue                                     | Suppression de son côté seulement (hidden), réapparition si l'autre écrit (RG-C10)
+
+
+
+8. POINTS À FAIRE VALIDER
+=========================
+
+  - Utilisateur courant : les écrans Personnes, Profil et Vidéos comparent les
+    identifiants à une constante ME = 1 fournie par le mock. Avec la base TModeler,
+    l'utilisateur connecté a son propre _id (2, 3…). En attendant la réponse de
+    Foundation, bridge.ts échange l'identifiant de l'utilisateur connecté avec ME (dans
+    les deux sens) pour les bridges utilisateurs et publications : les écrans
+    reconnaissent ainsi ses publications et ses likes, sans être modifiés. C'est un
+    contournement à valider avec Foundation.
+  - Ouverture d'une conversation : le bouton « Écrire un message » appelle
+    createConversation avec le nom de la personne. Deux utilisateurs peuvent avoir le même
+    nom : à faire préciser par Foundation (identifiant de l'utilisateur plutôt que son
+    nom).
+  - Modifications des fichiers Foundation : le commit 5142c9f du team lead modifie des
+    fichiers fournis par Foundation (App.tsx, Auth.tsx, Home.tsx, ConversationView.tsx,
+    types.ts, mock.ts) et ajoute des fonctions absentes des interfaces Foundation
+    d'origine. L'équipe garde la suppression d'une conversation de son côté (RG-C10). «
+    Supprimer un message pour moi » reste hors conception tant qu'il n'est pas validé par
+    Foundation.
+  - Effets de la suppression d'un compte (RG-U12) : proposition de l'équipe, l'écran
+    indique seulement « Supprimer définitivement votre compte ».
+
+
+
+9. MODÈLES TMODELER (KOTLIN)
 ============================
 
-Emplacement : core/src/commonMain/kotlin/ai/tambo/foundation/ngoma/models/, une classe par
-fichier (User.kt, Message.kt…). Chaque fichier commence par le package et les imports
-ci-dessous (ne garder que ceux utilisés).
+Une classe par fichier, chaque fichier commençant par son package et les imports utilisés
+parmi ceux-ci :
 
-    package ai.tambo.foundation.ngoma.models
-    
     import ai.tambo.tmodeler.field.common.TextField
     import ai.tambo.tmodeler.field.common.IntField
     import ai.tambo.tmodeler.field.advanced.BoolField
@@ -430,16 +544,18 @@ ci-dessous (ne garder que ceux utilisés).
 > Gestion des utilisateurs
     class User : TModel<User>() {
         var name         = TextField().default("")
-        var phone        = TextField().default("").unique()
+        var identifier   = TextField().default("").unique()   // téléphone ou e-mail
         var passwordHash = TextField().default("")
-        var active       = BoolField().default(true)
-        var createdAt    = TimeField()
+        var bio          = TextField().default("")
+        var joinedAt     = TimeField()
+        var deleted      = BoolField().default(false)
     
         @TMignore var name_         by name
-        @TMignore var phone_        by phone
+        @TMignore var identifier_   by identifier
         @TMignore var passwordHash_ by passwordHash
-        @TMignore var active_       by active
-        @TMignore var createdAt_    by createdAt
+        @TMignore var bio_          by bio
+        @TMignore var joinedAt_     by joinedAt
+        @TMignore var deleted_      by deleted
     
         companion object { val tms by lazy { Tms(User::class) } }
     }
@@ -474,6 +590,7 @@ ci-dessous (ne garder que ceux utilisés).
         var archived     = BoolField().default(false)
         var unread       = IntField().default(0)
         var lastReadAt   = TimeField()
+        var hidden       = BoolField().default(false)   // supprimée de son côté (RG-C10)
     
         @TMignore var conversation_ by conversation
         @TMignore var user_         by user
@@ -482,6 +599,7 @@ ci-dessous (ne garder que ceux utilisés).
         @TMignore var archived_     by archived
         @TMignore var unread_       by unread
         @TMignore var lastReadAt_   by lastReadAt
+        @TMignore var hidden_       by hidden
     
         companion object { val tms by lazy { Tms(ConversationMember::class) } }
     }
@@ -491,7 +609,7 @@ ci-dessous (ne garder que ceux utilisés).
         var author       = ModelField(User::class)
         var text         = TextField().default("")
         var replyTo      = ModelField(Message::class)
-        var attachment   = ModelField(Media::class)
+        var attachment   = TextField().default("")   // nom du fichier joint
         var edited       = BoolField().default(false)
         var deleted      = BoolField().default(false)
         var sentAt       = TimeField()
@@ -511,7 +629,7 @@ ci-dessous (ne garder que ceux utilisés).
     class Reaction : TModel<Reaction>() {
         var message = ModelField(Message::class)
         var user    = ModelField(User::class)
-        var emoji   = TextField().default("")
+        var emoji   = TextField().default("")   // 👍 ❤️ 😂 😮
     
         @TMignore var message_ by message
         @TMignore var user_    by user
@@ -523,23 +641,17 @@ ci-dessous (ne garder que ceux utilisés).
 
 > Publications et interactions
     class Post : TModel<Post>() {
-        var author        = ModelField(User::class)
-        var type          = TextField().default("legende")   // image, audio, video, legende
-        var caption       = TextField().default("")
-        var media         = ModelField(Media::class)
-        var likesCount    = IntField().default(0)
-        var commentsCount = IntField().default(0)
-        var edited        = BoolField().default(false)
-        var publishedAt   = TimeField()
+        var author      = ModelField(User::class)
+        var caption     = TextField().default("")
+        var media       = ModelField(Media::class)     // 0..1
+        var edited      = BoolField().default(false)
+        var publishedAt = TimeField()
     
-        @TMignore var author_        by author
-        @TMignore var type_          by type
-        @TMignore var caption_       by caption
-        @TMignore var media_         by media
-        @TMignore var likesCount_    by likesCount
-        @TMignore var commentsCount_ by commentsCount
-        @TMignore var edited_        by edited
-        @TMignore var publishedAt_   by publishedAt
+        @TMignore var author_      by author
+        @TMignore var caption_     by caption
+        @TMignore var media_       by media
+        @TMignore var edited_      by edited
+        @TMignore var publishedAt_ by publishedAt
     
         companion object { val tms by lazy { Tms(Post::class) } }
     }
@@ -547,12 +659,10 @@ ci-dessous (ne garder que ceux utilisés).
     class Like : TModel<Like>() {
         var post      = ModelField(Post::class)
         var user      = ModelField(User::class)
-        var emoji     = TextField().default("")
         var createdAt = TimeField()
     
         @TMignore var post_      by post
         @TMignore var user_      by user
-        @TMignore var emoji_     by emoji
         @TMignore var createdAt_ by createdAt
     
         companion object { val tms by lazy { Tms(Like::class) } }
@@ -561,49 +671,47 @@ ci-dessous (ne garder que ceux utilisés).
     class Comment : TModel<Comment>() {
         var post      = ModelField(Post::class)
         var author    = ModelField(User::class)
+        var parent    = ModelField(Comment::class)  // 0..1 : vide = commentaire principal
         var text      = TextField().default("")
+        var edited    = BoolField().default(false)
+        var deleted   = BoolField().default(false)
         var createdAt = TimeField()
     
         @TMignore var post_      by post
         @TMignore var author_    by author
+        @TMignore var parent_    by parent
         @TMignore var text_      by text
+        @TMignore var edited_    by edited
+        @TMignore var deleted_   by deleted
         @TMignore var createdAt_ by createdAt
     
         companion object { val tms by lazy { Tms(Comment::class) } }
     }
     
-    class Reply : TModel<Reply>() {
+    class CommentLike : TModel<CommentLike>() {
         var comment   = ModelField(Comment::class)
-        var author    = ModelField(User::class)
-        var text      = TextField().default("")
+        var user      = ModelField(User::class)
         var createdAt = TimeField()
     
         @TMignore var comment_   by comment
-        @TMignore var author_    by author
-        @TMignore var text_      by text
+        @TMignore var user_      by user
         @TMignore var createdAt_ by createdAt
     
-        companion object { val tms by lazy { Tms(Reply::class) } }
+        companion object { val tms by lazy { Tms(CommentLike::class) } }
     }
 
 
 > Entité partagée
     class Media : TModel<Media>() {
-        var file      = FileField()
-        var type      = TextField().default("")   // image, audio, video
+        var file      = FileField()               // référence, pour un futur serveur
+        var dataUrl   = TextField().default("")   // contenu en base64, sans serveur
+        var type      = TextField().default("")   // image ou video
         var sizeBytes = IntField().default(0)
     
         @TMignore var file_      by file
+        @TMignore var dataUrl_   by dataUrl
         @TMignore var type_      by type
         @TMignore var sizeBytes_ by sizeBytes
     
         companion object { val tms by lazy { Tms(Media::class) } }
     }
-
-
-Points à vérifier à la compilation
-----------------------------------
-  - Les modèles n'ont pas encore été compilés : lancer npm run core:build puis npm run
-    sync:core.
-  - Message.replyTo pointe vers Message (relation vers soi-même). Si la version 1.0.1 de
-    TModeler la refuse, remplacer ce champ par replyToId = IntField().default(0).

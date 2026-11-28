@@ -17,11 +17,13 @@ import ai.tambo.tmodeler.ms.Tms
 
 class Media : TModel<Media>() {
 
-    var file      = FileField()
+    var file      = FileField()               // référence du fichier, pour un futur serveur
+    var dataUrl   = TextField().default("")   // contenu en base64 (data URL), sans serveur (RG-F6)
     var type      = TextField().default("")   // image ou video (RG-F2)
-    var sizeBytes = IntField().default(0)     // vidéo ≤ 100 Mo (RG-F3)
+    var sizeBytes = IntField().default(0)     // ≤ 500 Ko (RG-F3)
 
     @TMignore var file_      by file
+    @TMignore var dataUrl_   by dataUrl
     @TMignore var type_      by type
     @TMignore var sizeBytes_ by sizeBytes
 

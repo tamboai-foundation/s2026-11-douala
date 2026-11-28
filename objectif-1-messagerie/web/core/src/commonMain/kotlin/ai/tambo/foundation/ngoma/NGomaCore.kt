@@ -57,7 +57,7 @@ object NGomaTableInitializer : ITableInitializer {
 object NGomaCore {
 
     // RG-T5 : incrémenter après toute modification de structure de modèle.
-    const val DB_VERSION = 6
+    const val DB_VERSION = 7
 
     var ready_ = false
         private set
